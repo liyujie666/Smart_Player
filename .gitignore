@@ -1,0 +1,39 @@
+# Qt 编译产物
+build/
+debug/
+release/
+*.pro.user
+*.pro.user.*
+*.qmake.stash
+*.o
+*.obj
+*.so
+*.dll
+*.exe
+*.lib
+*.a
+*.pdb  # 重点：忽略调试文件（罪魁祸首）
+*.ilk
+*.pch
+*.ipch
+*.suo
+*.vcxproj.user
+
+# 调试/临时文件
+*.pdb
+*.dSYM/
+*.log
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# FFmpeg 相关编译产物
+*.dll
+*.so
+*.a
+*.lib
+*.bin
+
+# 可执行文件
+Smart_OBS
