@@ -321,7 +321,7 @@ VideoInfoDialog::~VideoInfoDialog()
     delete ui;
 }
 
-void VideoInfoDialog::updateinformation(AVFormatContext *update_fmtCtx, char *filename)
+void VideoInfoDialog::updateinformation(AVFormatContext *update_fmtCtx, const char *filename)
 {
     int audioIndex = -1;
     int videoIndex = -1;

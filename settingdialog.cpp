@@ -5,9 +5,8 @@
 #include <QOverload>
 #include <QDebug>
 
-settingDialog::settingDialog(VideoWidget *videoWidget,QWidget *parent)
+settingDialog::settingDialog(QWidget *parent)
     : QDialog(parent)
-    , videoWidget_(videoWidget)
     , ui(new Ui::settingDialog)
 {
     ui->setupUi(this);
@@ -19,15 +18,17 @@ settingDialog::settingDialog(VideoWidget *videoWidget,QWidget *parent)
     ui->softwareRadio->setChecked(true);
 
     QButtonGroup *group2 = new QButtonGroup(this);
-    group2->addButton(ui->defaultSize);
-    group2->addButton(ui->stretchSize);
-    group2->addButton(ui->expandSize);
-    group2->addButton(ui->cutSize);
+    group2->addButton(ui->defaultSize,0);
+    group2->addButton(ui->expandSize,1);
     ui->defaultSize->setChecked(true);
 
     //初始化亮度调节QSlider
-    ui->lightSlider->setRange(0,100);
-    ui->lightSlider->setValue(50);
+    ui->lightSlider->setRange(-100,100);
+    ui->lightSlider->setValue(0);
+    ui->contrastSlider->setRange(0,300);
+    ui->contrastSlider->setValue(100);
+    ui->baoheSlider->setRange(0,300);
+    ui->baoheSlider->setValue(100);
 
     connect(group2, &QButtonGroup::buttonClicked, this, [=](QAbstractButton* button){
         int id = group2->id(button);
@@ -37,7 +38,7 @@ settingDialog::settingDialog(VideoWidget *videoWidget,QWidget *parent)
         qDebug() << "当前解码器" << text;
         emit updateUserDecoder(text);
     });
-    connect(ui->lightSlider,&QSlider::valueChanged,videoWidget_,&VideoWidget::setBrightness);
+
 
 }
 
@@ -85,6 +86,20 @@ void settingDialog::on_SizeModeChanged(int mode)
 
 void settingDialog::on_lightSlider_valueChanged(int value)
 {
-    ui->lightLabel->setText(QString("%1").arg(value));
+    ui->lightLabel->setText(QString::number(value));
+    emit brightnessValueChanged(value);
 }
 
+
+void settingDialog::on_contrastSlider_valueChanged(int value)
+{
+    ui->contrastLabel->setText(QString::number(value));
+    emit contrastValueChanged(value);
+}
+
+
+void settingDialog::on_baoheSlider_valueChanged(int value)
+{
+    ui->baoheLabel->setText(QString::number(value));
+    emit saturationValueChanged(value);
+}

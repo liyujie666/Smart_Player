@@ -10,7 +10,6 @@
         <file>SmartPlayer-icon/forward.png</file>
         <file>SmartPlayer-icon/full_screen.png</file>
         <file>SmartPlayer-icon/last_video.png</file>
-        <file>SmartPlayer-icon/loading.gif</file>
         <file>SmartPlayer-icon/lock_screen.png</file>
         <file>SmartPlayer-icon/logo.png</file>
         <file>SmartPlayer-icon/next_video.png</file>
@@ -37,5 +36,15 @@
         <file>SmartPlayer-icon/logo.ico</file>
         <file>SmartPlayer-icon/image_rtmp.png</file>
         <file>SmartPlayer-icon/image_rtsp.png</file>
+        <file>SmartPlayer-icon/list_circle.png</file>
+        <file>SmartPlayer-icon/random_circle.png</file>
+        <file>SmartPlayer-icon/single_circle.png</file>
+        <file>SmartPlayer-icon/loading_1.gif</file>
+        <file>SmartPlayer-icon/loading_2.gif</file>
+        <file>SmartPlayer-icon/loading_3.gif</file>
+        <file>SmartPlayer-icon/loading_4.gif</file>
+        <file>SmartPlayer-icon/loading_5.gif</file>
+        <file>SmartPlayer-icon/image_audio_1.png</file>
+        <file>SmartPlayer-icon/image_audio_2.jpg</file>
     </qresource>
 </RCC>

@@ -2,7 +2,6 @@
 #define SETTINGDIALOG_H
 
 #include <QDialog>
-#include "videowidget.h"
 
 namespace Ui {
 class settingDialog;
@@ -13,7 +12,7 @@ class settingDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit settingDialog(VideoWidget *videoWidget,QWidget *parent = nullptr);
+    explicit settingDialog(QWidget *parent = nullptr);
     ~settingDialog();
 
 
@@ -26,14 +25,12 @@ public:
 
 private slots:
     void on_hardwareRadio_toggled(bool checked);
-
     void on_softwareRadio_toggled(bool checked);
-
     void on_selectPathBtn_clicked();
-
     void on_SizeModeChanged(int mode);
-
     void on_lightSlider_valueChanged(int value);
+    void on_contrastSlider_valueChanged(int value);
+    void on_baoheSlider_valueChanged(int value);
 
 signals:
     void startHardWareAccep(bool on);
@@ -41,9 +38,11 @@ signals:
     void updateSaveFilePath(QString path);
     void updateVideoSizeMode(int id);
     void updateUserDecoder(const QString decoder);
+    void brightnessValueChanged(int value);
+    void contrastValueChanged(int value);
+    void saturationValueChanged(int value);
 private:
     Ui::settingDialog *ui;
-    VideoWidget* videoWidget_;
 };
 
 #endif // SETTINGDIALOG_H

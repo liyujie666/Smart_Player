@@ -1,7 +1,6 @@
 #include "picturecreator.h"
 #include <QDebug>
 
-
 PictureCreator::PictureCreator() {
     avformat_network_init();
 }
@@ -21,7 +20,60 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
     QImage previewImage;
 
     QString type = getFileType(videoPath);
-    if(type == "FILE")
+
+    if(type == "AUDIO")
+    {
+        // 1. 打开MP3文件
+        if (avformat_open_input(&fmtCtx, videoPath.toStdString().c_str(), nullptr, nullptr) != 0) {
+            duration_ = 0;
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+        avformat_find_stream_info(fmtCtx, nullptr);
+        duration_ = fmtCtx->duration * av_q2d(AV_TIME_BASE_Q);
+
+        // 2. 查找【专辑封面流】(附加图片流 attached_pic)
+        int coverStreamIdx = -1;
+        for (unsigned int i = 0; i < fmtCtx->nb_streams; i++) {
+            AVStream* stream = fmtCtx->streams[i];
+            // 判断是否为内嵌专辑封面
+            if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                coverStreamIdx = i;
+                break;
+            }
+        }
+
+        // 3. 未找到封面 → 返回默认音频图标
+        if (coverStreamIdx == -1) {
+            avformat_close_input(&fmtCtx);
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+
+        // 4. 找到封面 → 初始化解码器
+        codecParams = fmtCtx->streams[coverStreamIdx]->codecpar;
+        codec = avcodec_find_decoder(codecParams->codec_id);
+        if (!codec) {
+            avformat_close_input(&fmtCtx);
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+
+        codecCtx = avcodec_alloc_context3(codec);
+        avcodec_parameters_to_context(codecCtx, codecParams);
+        if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
+            avformat_close_input(&fmtCtx);
+            avcodec_free_context(&codecCtx);
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+
+        // 读取封面数据包）
+        AVPacket pkt = fmtCtx->streams[coverStreamIdx]->attached_pic;
+        if (avcodec_send_packet(codecCtx, &pkt) == 0) {
+            if (avcodec_receive_frame(codecCtx, frame) == 0) {
+                previewImage = convertFrameToQImage(frame, maxWidth, maxHeight);
+            }
+        }
+
+    }
+    else if(type == "FILE")
     {
         // 1. 打开视频文件
         if (avformat_open_input(&fmtCtx, videoPath.toStdString().c_str(), nullptr, nullptr) != 0) {
@@ -70,7 +122,6 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
             if (packet.stream_index == videoStreamIdx) {
                 if (avcodec_send_packet(codecCtx, &packet) == 0) {
                     if (avcodec_receive_frame(codecCtx, frame) == 0) {
-                        // 成功解码到帧，转换为 QImage
                         previewImage = convertFrameToQImage(frame, maxWidth, maxHeight);
                         break;
                     }
@@ -86,51 +137,47 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         return QImage(":/SmartPlayer-icon/image_rtmp.png");
     }
 
-
-
 cleanup:
-    // 释放资源
     if (codecCtx) avcodec_free_context(&codecCtx);
     if (fmtCtx) avformat_close_input(&fmtCtx);
     if (frame) av_frame_free(&frame);
+
+    if (type == "AUDIO" && previewImage.isNull()) {
+        return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+    }
 
     return previewImage;
 }
 
 QImage PictureCreator::convertFrameToQImage(AVFrame *frame, int maxWidth, int maxHeight)
 {
+
     SwsContext *swsCtx = sws_getContext(
         frame->width, frame->height, (AVPixelFormat)frame->format,
-        maxWidth, maxHeight, AV_PIX_FMT_RGB24, // 输出为 RGB24 格式
+        maxWidth, maxHeight, AV_PIX_FMT_RGB24,
         SWS_BILINEAR, nullptr, nullptr, nullptr
         );
 
     if (!swsCtx) return QImage();
 
-    // 创建目标 AVFrame
     AVFrame *rgbFrame = av_frame_alloc();
     rgbFrame->format = AV_PIX_FMT_RGB24;
     rgbFrame->width = maxWidth;
     rgbFrame->height = maxHeight;
     av_frame_get_buffer(rgbFrame, 0);
 
-    // 转换像素格式并缩放
     sws_scale(swsCtx, frame->data, frame->linesize, 0, frame->height,
               rgbFrame->data, rgbFrame->linesize);
 
-    // 创建 QImage
     QImage image(
         rgbFrame->data[0],
         maxWidth,
         maxHeight,
-        rgbFrame->linesize[0], // 关键修复：使用实际行跨度
+        rgbFrame->linesize[0],
         QImage::Format_RGB888
         );
 
-    // 深拷贝数据（避免 AVFrame 释放后数据丢失）
     QImage copy = image.copy();
-
-    // 清理
     sws_freeContext(swsCtx);
     av_frame_free(&rgbFrame);
 
@@ -144,12 +191,16 @@ int PictureCreator::getDuration()
 
 QString PictureCreator::getFileType(const QString &videoPath)
 {
-    if(videoPath.toLower().endsWith(".mp4") || videoPath.toLower().endsWith(".mkv") || videoPath.toLower().endsWith(".avi"))
-    {
+    // 原代码完全复用，支持MP3识别
+    QString path = videoPath.toLower();
+    if (path.endsWith(".mp4") || path.endsWith(".mkv") || path.endsWith(".avi")) {
         return "FILE";
-    }else if(videoPath.startsWith("rtsp")){
+    } else if (path.endsWith(".mp3")) {
+        return "AUDIO";
+    } else if (videoPath.startsWith("rtsp")) {
         return "RTSP";
     }else if(videoPath.startsWith("rtmp")){
         return "RTMP";
     }
+    return "UNKNOWN";
 }

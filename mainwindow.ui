@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1147</width>
-    <height>824</height>
+    <width>858</width>
+    <height>635</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -42,7 +42,7 @@
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout_4">
        <item>
-        <widget class="VideoWidget" name="videoWidget" native="true">
+        <widget class="OpenGLRenderer" name="videoWidget">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
            <horstretch>0</horstretch>
@@ -62,18 +62,51 @@
           <property name="bottomMargin">
            <number>0</number>
           </property>
-          <item row="0" column="0">
-           <spacer name="horizontalSpacer_3">
-            <property name="orientation">
-             <enum>Qt::Orientation::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>345</width>
-              <height>460</height>
-             </size>
-            </property>
-           </spacer>
+          <item row="0" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_5">
+            <item>
+             <spacer name="horizontalSpacer_4">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>278</width>
+                <height>28</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="openListBtn">
+              <property name="styleSheet">
+               <string notr="true">QPushButton{
+	background-color: rgba(0, 0, 0, 160);  /* 半透明黑 */
+	max-height:50px;
+	max-width:23px;
+	min-height:50px;
+	min-width:23px;
+	border:none;
+	border-radius: 5px;
+	margin-right:5px;
+}</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="Resource.qrc">
+                <normaloff>:/SmartPlayer-icon/right_arrow.png</normaloff>:/SmartPlayer-icon/right_arrow.png</iconset>
+              </property>
+              <property name="iconSize">
+               <size>
+                <width>20</width>
+                <height>20</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
           </item>
           <item row="0" column="1">
            <layout class="QVBoxLayout" name="verticalLayout_3">
@@ -92,8 +125,8 @@
 	font-size: 13px;
 	background-color: rgba(0, 0, 0, 150); 
 	border-radius: 5px;
-  	text-align: center;
-    alignment: center;
+   	text-align: center;
+    	alignment: center;
 	margin-top:5px;
 
 }</string>
@@ -114,27 +147,27 @@
               <property name="minimumSize">
                <size>
                 <width>0</width>
-                <height>39</height>
+                <height>49</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
                 <width>624</width>
-                <height>39</height>
+                <height>49</height>
                </size>
               </property>
               <property name="styleSheet">
                <string notr="true">QLabel {
         background-color: rgba(0, 0, 0, 160);  /* 半透明黑 */
-		max-height: 18px;
-		min-height:18px;
-		max-width: 600px;
+	max-height: 18px;
+	min-height:18px;
+	max-width: 600px;
         color: white;                          /* 高对比字体 */
         border-radius: 8px;
         padding: 8px 12px;
         font-size: 12px;
         font-weight: bold;
-		margin-top:5px;
+	margin-top:15px;
  }</string>
               </property>
               <property name="text">
@@ -197,51 +230,18 @@
             </item>
            </layout>
           </item>
-          <item row="0" column="2">
-           <layout class="QHBoxLayout" name="horizontalLayout_5">
-            <item>
-             <spacer name="horizontalSpacer_4">
-              <property name="orientation">
-               <enum>Qt::Orientation::Horizontal</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>278</width>
-                <height>28</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <item>
-             <widget class="QPushButton" name="openListBtn">
-              <property name="styleSheet">
-               <string notr="true">QPushButton{
-	background-color: rgba(0, 0, 0, 160);  /* 半透明黑 */
-	max-height:50px;
-	max-width:23px;
-	min-height:50px;
-	min-width:23px;
-	border:none;
-	border-radius: 5px;
-	margin-right:5px;
-}</string>
-              </property>
-              <property name="text">
-               <string/>
-              </property>
-              <property name="icon">
-               <iconset resource="Resource.qrc">
-                <normaloff>:/SmartPlayer-icon/right_arrow.png</normaloff>:/SmartPlayer-icon/right_arrow.png</iconset>
-              </property>
-              <property name="iconSize">
-               <size>
-                <width>20</width>
-                <height>20</height>
-               </size>
-              </property>
-             </widget>
-            </item>
-           </layout>
+          <item row="0" column="0">
+           <spacer name="horizontalSpacer_3">
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>345</width>
+              <height>460</height>
+             </size>
+            </property>
+           </spacer>
           </item>
          </layout>
         </widget>
@@ -1066,15 +1066,15 @@ border-radius:5px;
  </widget>
  <customwidgets>
   <customwidget>
-   <class>VideoWidget</class>
-   <extends>QWidget</extends>
-   <header>videowidget.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>VideoSlider</class>
    <extends>QSlider</extends>
    <header>videoslider.h</header>
+  </customwidget>
+  <customwidget>
+   <class>OpenGLRenderer</class>
+   <extends>QOpenGLWidget</extends>
+   <header>openglrenderer.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <resources>

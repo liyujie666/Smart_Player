@@ -1,8 +1,7 @@
 #ifndef VIDEOSLIDER_H
 #define VIDEOSLIDER_H
 #include <QSlider>
-#include <time.h>
-#include "condmutex.h"
+#include <QElapsedTimer>
 
 class VideoSlider : public QSlider {
     Q_OBJECT
@@ -25,6 +24,7 @@ private:
 
     clock_t start;
     int x;
+    QElapsedTimer timer_;
 };
 
 #endif // VIDEOSLIDER_H

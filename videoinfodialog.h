@@ -18,7 +18,7 @@ public:
     explicit VideoInfoDialog(QWidget *parent = nullptr);
     ~VideoInfoDialog();
 
-    void updateinformation(AVFormatContext *update_fmtCtx,char *filename);
+    void updateinformation(AVFormatContext *update_fmtCtx,const char *filename);
 
 private:
     Ui::VideoInfoDialog *ui;

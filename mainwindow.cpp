@@ -11,6 +11,7 @@
 #include <QStandardItemModel>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QMovie>
 #include <QtConcurrent>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -22,24 +23,21 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     this->setWindowTitle("Smart_Player");
     this->setWindowIcon(QIcon(":/SmartPlayer-icon/logo.png"));
+    ui->videoWidget->installEventFilter(this);
+    ui->controlBarContainer->installEventFilter(this);
+    ui->videoWidget->setMouseTracking(true);
+    ui->controlBarContainer->setMouseTracking(true);
     setContentsMargins(0, 0, 0, 0);
-    settingdialog = new settingDialog(ui->videoWidget,this);
+    settingdialog = new settingDialog(this);
     popMenu = new QMenu(this);
     picture_ = new PictureCreator();
-    //初始化预览窗口VideoWidget对象
-    preview_ = nullptr;
-    preview_ = new VideoWidget(this);
-    preview_->resize(160,90);
-    preview_->move(0, 0);
-    preview_->setVisible(false);
-    preview_->setStyleSheet("background:transparent;border-radius:5px;"); // 透明背景
-    preview_->setParent(ui->videoWidget);
 
-    ui->videoWidget->setControlBar(ui->controlBarContainer);
+    initPreviewWindow();
+    initControlbarPresent();
+    initComponent();
 
-    qRegisterMetaType<VideoPlayer::VideoSwsSpec>("VideoSwsSpec&");
-    player_ = new VideoPlayer();
-    preview_player_ = new VideoPlayer();
+    player_ = new PlayerCore(this);
+    preview_player_ = new PreviewPlayer();
 
     //加载曾经播放过的文件
     //loadFile();
@@ -50,38 +48,42 @@ MainWindow::MainWindow(QWidget *parent)
     ui->infoLabel->hide();
 
     connect(&timer,&QTimer::timeout,this,&MainWindow::onLongPressTimeout);   //右方向键长按倍速播放
-    connect(player_,&VideoPlayer::stateChanged,this,&MainWindow::onPlayerStateChanged); //播放器状态转换
-    connect(player_,&VideoPlayer::timeChanged,this,&MainWindow::onPlayerTimeChanged); //更新当前播放时间
-    connect(player_,&VideoPlayer::initFinished,this,&MainWindow::onPlayerInitFinished); //初始化播放器参数
-    connect(player_,&VideoPlayer::playFailed,this,&MainWindow::onPlayerPlayFailed); //播放出错；
-    connect(player_,&VideoPlayer::frameDecoded,ui->videoWidget,&VideoWidget::onPlayerFrameDecoded);//视频显示
-    connect(preview_player_,&VideoPlayer::frameDecoded,preview_,&VideoWidget::onPlayerFrameDecoded);    //预览图片显示
-    connect(player_,&VideoPlayer::stateChanged,ui->videoWidget,&VideoWidget::onPlayerStateChanged);//预览线程中VideoWidget播放器状态转换
+    connect(player_,&PlayerCore::openResult,this,&MainWindow::onPlayerOpenResult);//视频渲染
+    connect(player_,&PlayerCore::stateChanged,this,&MainWindow::onPlayerStateChanged); //播放器状态转换
+    connect(player_,&PlayerCore::timeChanged,this,&MainWindow::onPlayerTimeChanged); //更新当前播放时间
+    connect(player_,&PlayerCore::initFinished,this,&MainWindow::onPlayerInitFinished); //初始化播放器参数
+    connect(player_,&PlayerCore::playFailed,this,&MainWindow::onPlayerPlayFailed); //播放出错
+    connect(player_,&PlayerCore::screecshotStatus,this,&MainWindow::on_screenshotStatus);
+    connect(player_, &PlayerCore::playFinished, this, [this]() {player_->stop();});
+    connect(player_,&PlayerCore::frameYuv420pDecoded,this,&MainWindow::on_frameYuv420pDecoded);//视频渲染
+    connect(player_,&PlayerCore::frameNv12Decoded,this,&MainWindow::on_frameNv12Decoded);//视频渲染
+    connect(player_,&PlayerCore::frameRGBADecoded,this,&MainWindow::on_frameRGBADecoded);//视频渲染
+    connect(preview_player_,&PreviewPlayer::previewFrameReady,this,&MainWindow::on_previewFrameDecoded);
     connect(ui->progressSlider, &VideoSlider::clicked,this, &MainWindow::onSliderClicked);  //进度条点击
     connect(ui->progressSlider,&VideoSlider::preview,this,&MainWindow::onSliderMouseFoucs);    //进度条鼠标悬停（显示预览图片
     connect(ui->progressSlider,&VideoSlider::mouseleave,this,&MainWindow::onMouseLeaveSlider);    //进度条鼠标移动（关闭预览图片）
     connect(settingdialog, &settingDialog::startHardWareAccep, this, &MainWindow::on_setHardWare);          //设置硬件加速
     connect(settingdialog, &settingDialog::startSoftWareAccep, this, &MainWindow::on_setHardWare);          //设置软件加速
     connect(settingdialog,&settingDialog::updateSaveFilePath,this,&MainWindow::on_update_file_path);        //更新文件保存路径
-    connect(settingdialog,&settingDialog::updateVideoSizeMode,ui->videoWidget,&VideoWidget::handleSizeModeChanged); //切换画面尺寸
     connect(settingdialog,&settingDialog::updateUserDecoder,this,&MainWindow::on_change_userDecoder);       //切换用户指定解码器
-    connect(player_,&VideoPlayer::showMessage,this,&MainWindow::on_show_message_info);                      //显示提示消息
-    connect(player_, &VideoPlayer::snapshotReady, this, [this](AVFrame *frame, const VideoPlayer::VideoSwsSpec &spec, const QString &path) {
-        QFuture<bool> future = QtConcurrent::run([this,frame,spec,path]() {                                 //截图
-            int imageSize = spec.size;
-            QImage image(spec.width, spec.height, QImage::Format_RGB888);
-            memcpy(image.bits(), frame->data[0], imageSize);
-            bool ok = image.save(path);
-            QString info = ok ? "截图保存成功：" + path: "截图失败！" + path;
-            QMetaObject::invokeMethod(this, [this, info]() {
-                messageInfo(info, 2000);
-            }, Qt::QueuedConnection);
-            return ok;
-        });
+    connect(settingdialog, &settingDialog::updateVideoSizeMode,this, &MainWindow::onVideoSizeModeChanged);
+    connect(settingdialog, &settingDialog::brightnessValueChanged, this, [this](int value){
+        float b = value / 100.0f;
+        ui->videoWidget->setBrightness(b);
+    });
+
+    connect(settingdialog, &settingDialog::contrastValueChanged, this, [this](int value){
+        float c = value / 100.0f;
+        ui->videoWidget->setContrast(c);
+    });
+
+    connect(settingdialog, &settingDialog::saturationValueChanged, this, [this](int value){
+        float s = value / 100.0f;
+        ui->videoWidget->setSaturation(s);
     });
 
     //音量设置
-    ui->volumeSlider->setRange(VideoPlayer::Volume::Min,VideoPlayer::Volume::Max);
+    ui->volumeSlider->setRange(0, 100);
     ui->volumeSlider->setValue(ui->volumeSlider->maximum() >> 1);
 
     ui->progressSlider->setEnabled(false);
@@ -100,28 +102,30 @@ MainWindow::~MainWindow()
 {
     //释放线程
     player_->stop();
-    preview_player_->stopwithSignal();
+    preview_player_->stop();
     //释放资源
     delete ui;
     delete player_;
     delete preview_player_;
     delete picture_;
+    delete preview_;
 
     player_ = nullptr;
     preview_player_ = nullptr;
+    preview_ = nullptr;
     picture_ = nullptr;
 }
 
-void MainWindow::onPlayerStateChanged(VideoPlayer *player)
+void MainWindow::onPlayerStateChanged()
 {
-    VideoPlayer::State state = player->getState();
-    if(VideoPlayer::Playing == state){
+    PlayerCore::State state = player_->getState();
+    if(PlayerCore::Running == state){
         ui->startBtn->setIcon(QIcon(":/SmartPlayer-icon/pause.png"));
         ui->progressSlider->setEnabled(true);
     }else{
         ui->startBtn->setIcon(QIcon(":/SmartPlayer-icon/start.png"));
     }
-    if(state == VideoPlayer::Stopped){
+    if(state == PlayerCore::Stopped){
         // ui->startBtn->setEnabled(false);
         ui->preVideoBtn->setEnabled(false);
         ui->nextVideoBtn->setEnabled(false);
@@ -134,9 +138,10 @@ void MainWindow::onPlayerStateChanged(VideoPlayer *player)
         ui->mutipleSPeed->setEnabled(false);
         ui->logoBtn->setVisible(true);
         ui->speedLabel->setVisible(false);
-        ui->allTimeLabel->setText(getTimeText(0));
+        //ui->allTimeLabel->setText(getTimeText(0));
+        ui->nowTimeLabel->setText(getTimeText(0));
         ui->progressSlider->setValue(0);
-
+        ui->videoWidget->stop();
         // if(ui->fileList->isHidden()){
         //     on_openListBtn_clicked();
         // }
@@ -153,62 +158,103 @@ void MainWindow::onPlayerStateChanged(VideoPlayer *player)
         ui->mutipleSPeed->setEnabled(true);
         ui->logoBtn->setVisible(false);
     }
-    if(state == VideoPlayer::Paused){
+    if(state == PlayerCore::Paused){
         ui->logoBtn->setVisible(true);
     }
 }
 
-void MainWindow::onPlayerTimeChanged(VideoPlayer *player)
+
+void MainWindow::onPlayerTimeChanged()
 {
-    ui->progressSlider->setValue(player->getTime());
+    if(is_seeking) return;
+    int64_t pos = player_->getCurrentPos();
+    ui->progressSlider->setValue(pos);
+    ui->nowTimeLabel->setText(getTimeText(pos));
 }
 
-void MainWindow::onPlayerInitFinished(VideoPlayer *player)
+void MainWindow::onPlayerInitFinished()
 {
-    int duration = player->getDuration();
+    int duration = player_->getDuration();
+    qDebug() << "duration" << duration;
     ui->progressSlider->setRange(0,duration);
     ui->allTimeLabel->setText(getTimeText(duration));
+    if(loadingLabel_) loadingLabel_->hide();
 }
 
-void MainWindow::onPlayerPlayFailed(VideoPlayer *player)
+void MainWindow::onPlayerPlayFailed(const QString& info)
 {
-    QMessageBox::critical(nullptr, "提示", "哦豁，出现神秘的错误！");
+    if(loadingLabel_) {
+        loadingLabel_->hide();
+        ui->logoBtn->show();
+    }
+    QMessageBox::critical(nullptr, "提示", info);
+}
+
+void MainWindow::onPlayerOpenResult(bool result)
+{
+    if(result){
+        player_->play();
+        ui->videoWidget->start();
+        ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::Video);
+        // mp3渲染专辑封面
+        if (!player_->hasVideo()) {
+            ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::Cover);
+            QImage cover = picture_->getPreViewImage(player_->getFileUrl(),ui->videoWidget->width(),ui->videoWidget->height());
+            ui->videoWidget->renderCoverImage(cover);
+
+            preview_player_->stop();
+            previewContainer_->hide();
+            return;
+        }
+
+
+        // 非视频文件关闭预览
+        if (player_->getMediaType() != Demuxer::MediaType::FILE_TYPE) {
+            preview_player_->stop();
+            previewContainer_->hide();
+            return;
+        }
+
+        int ret = preview_player_->open(player_->getFileUrl().toUtf8().constData());
+        if (ret < 0) qDebug() << "预览初始化失败";
+    }
+}
+
+void MainWindow::onVideoSizeModeChanged(int mode)
+{
+    ui->videoWidget->setSizeMode(mode);
 }
 
 void MainWindow::onSliderClicked(VideoSlider *slider)
 {
-    player_->setTime(slider->value());
+    player_->seek(slider->value() * 1000000);
 }
 
 void MainWindow::onSliderMouseFoucs(int seektime,int x)
 {
-    if (!preview_) return;
+    if (!player_->hasVideo() || player_->getMediaType() != Demuxer::MediaType::FILE_TYPE) return;
+    if (!preview_ || fileList.isEmpty() || !preview_player_) return;
 
-    preview_player_->setTime(seektime);
-    preview_player_->updateSignal();
+    preview_->clear();
+    previewTimeLabel_->setText(getTimeText(seektime));
+    preview_player_->requestPreview(seektime);
 
-    // 安全获取 controlBar 在 videoWidget 的坐标
     QPoint globalBarPos = ui->controlBarContainer->mapToGlobal(QPoint(0, 0));
     QPoint barPosInVideoWidget = ui->videoWidget->mapFromGlobal(globalBarPos);
-
-    // 将 slider 上的鼠标位置转换到 videoWidget 中
     QPoint globalMousePos = ui->progressSlider->mapToGlobal(QPoint(x, 0));
     QPoint videoMousePos = ui->videoWidget->mapFromGlobal(globalMousePos);
 
-    // 设置预览图的坐标
-    int xPos = videoMousePos.x() - preview_->width() / 2;
-    int yPos = barPosInVideoWidget.y() - preview_->height() - 8;
-
-    // 保证预览不越界
-    xPos = qMax(0, qMin(xPos, ui->videoWidget->width() - preview_->width()));
+    int xPos = videoMousePos.x() - previewContainer_->width() / 2;
+    int yPos = barPosInVideoWidget.y() - previewContainer_->height() - 8;
+    xPos = qMax(0, qMin(xPos, ui->videoWidget->width() - previewContainer_->width()));
     yPos = qMax(0, yPos);
 
-    preview_->move(xPos, yPos);
-    preview_->show();
+    previewContainer_->move(xPos, yPos);
+    previewContainer_->show();
 }
 
 void MainWindow::onMouseLeaveSlider(){
-    preview_->hide();
+    previewContainer_->hide();
 }
 
 void MainWindow::on_openFileBtn_clicked()
@@ -239,15 +285,14 @@ void MainWindow::on_openFileBtn_clicked()
 
 void MainWindow::on_startBtn_clicked()
 {
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Playing){
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Running){
         player_->pause();
-    }else if(state == VideoPlayer::Paused){
+    }else if(state == PlayerCore::Paused){
         player_->play();
-    }else if(state == VideoPlayer::Stopped && !fileList.empty()){
+    }else if(state == PlayerCore::Stopped && !fileList.empty()){
         qDebug() << "fileList[listIndex] = " << fileList[listIndex];
-        player_->setFilename(fileList[listIndex]);
-        player_->play();
+        play(fileList[listIndex]);
     }
 }
 
@@ -255,7 +300,8 @@ void MainWindow::on_startBtn_clicked()
 void MainWindow::on_stopBtn_clicked()
 {
     player_->stop();
-    preview_player_->stopwithSignal();
+    preview_player_->stop();
+    previewContainer_->hide();
 }
 
 
@@ -265,11 +311,13 @@ void MainWindow::on_preVideoBtn_clicked()
         QMessageBox::information(NULL,"当前列表为空","当前列表为空，无法切换上一个视频！",QMessageBox::Yes);
         return;
     }
-    //如何正在播放视频，则清除帧，重新打开视频
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Playing){
+    //先关闭
+    ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::None);
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Running){
         player_->stop();
-        preview_player_->stopwithSignal();
+        preview_player_->stop();
+        ui->videoWidget->stop();
     }
 
     listIndex -= 1;
@@ -288,11 +336,13 @@ void MainWindow::on_nextVideoBtn_clicked()
         QMessageBox::information(NULL,"当前列表为空","当前列表为空，无法切换下一个视频！",QMessageBox::Yes);
         return;
     }
-    //如何正在播放视频，则清除帧，重新打开视频
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Playing){
+    //先关闭
+    ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::None);
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Running){
         player_->stop();
-        preview_player_->stopwithSignal();
+        preview_player_->stop();
+        ui->videoWidget->stop();
     }
 
     listIndex += 1;
@@ -307,8 +357,8 @@ void MainWindow::on_nextVideoBtn_clicked()
 
 void MainWindow::on_back3sBtn_clicked()
 {
-    VideoPlayer::State state = player_->getState();
-    if(state != VideoPlayer::Stopped){
+    PlayerCore::State state = player_->getState();
+    if(state != PlayerCore::Stopped){
         ui->progressSlider->changeValue(-10);
     }
 }
@@ -316,8 +366,8 @@ void MainWindow::on_back3sBtn_clicked()
 
 void MainWindow::on_forward3sBtn_clicked()
 {
-    VideoPlayer::State state = player_->getState();
-    if(state != VideoPlayer::Stopped){
+    PlayerCore::State state = player_->getState();
+    if(state != PlayerCore::Stopped){
         ui->progressSlider->changeValue(10);
     }
 }
@@ -349,16 +399,7 @@ void MainWindow::on_openListBtn_clicked()
 
 void MainWindow::on_fullScreenBtn_clicked()
 {
-    if(!this->isFullScreen()){
-        this->showFullScreen();
-        ui->videoWidget->setFullscreenMode(true);
-        ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/exit_full_screen.png"));
-    }else{
-        this->showNormal();
-        ui->videoWidget->setFullscreenMode(false);
-        restoreControlBarParent();
-        ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/full_screen.png"));
-    }
+    isFullScreen() ? exitFullScreenMode() : enterFullScreenMode();
 }
 
 
@@ -435,7 +476,7 @@ void MainWindow::onLongPressTimeout()
     isLongPress = true; //标记为长按倍速播放
 }
 
-QString MainWindow::getTimeText(int value)
+QString MainWindow::getTimeText(int64_t value)
 {
     //获取XX：XX：XX格式的时间文本
     QLatin1Char fill = QLatin1Char('0');
@@ -453,27 +494,18 @@ void MainWindow::mousePressEvent(QMouseEvent *event)
 void MainWindow::mouseDoubleClickEvent(QMouseEvent *event)
 {
     if(event->button() == Qt::LeftButton){
-        if(!this->isFullScreen()){
-            this->showFullScreen();
-            ui->videoWidget->setFullscreenMode(true);
-            ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/exit_full_screen.png"));
-        }else{
-            this->showNormal();
-            ui->videoWidget->setFullscreenMode(false);
-            restoreControlBarParent();
-            ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/full_screen.png"));
-        }
+        isFullScreen() ? exitFullScreenMode() : enterFullScreenMode();
     }
 }
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
-    VideoPlayer::State state = player_->getState();
-    if(state != VideoPlayer::Stopped){
+    PlayerCore::State state = player_->getState();
+    if(state != PlayerCore::Stopped){
         //按空格键播放和暂停
         if(event->key() == Qt::Key_Space){
             state = player_->getState();
-            if(state == VideoPlayer::Playing){
+            if(state == PlayerCore::Running){
                 player_->pause();
             }else{
                 player_->play();
@@ -483,7 +515,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         //方向键右键，快进15秒
         else if(event->key() == Qt::Key_Right){
             state = player_->getState();
-            if(state != VideoPlayer::Stopped){
+            if(state != PlayerCore::Stopped){
                 if(!event->isAutoRepeat()){
                     isLongPress = false;
                     timer.start(500);
@@ -501,7 +533,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         //方向键左键，后退10秒
         else if(event->key() == Qt::Key_Left){
             state = player_->getState();
-            if(state != VideoPlayer::Stopped){
+            if(state != PlayerCore::Stopped){
                 ui->progressSlider->changeValue(-10);
                 messageInfo("后退10s",1000);
             }
@@ -549,17 +581,23 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         //esc键，退出全屏
         else if(event->key() == Qt::Key_Escape){
             if(this->isFullScreen()){
-                this->showNormal();
-                ui->videoWidget->setFullscreenMode(false);
-                restoreControlBarParent();
-                ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/full_screen.png"));
+                exitFullScreenMode();
             }
         }
     }
 }
+
+// void MainWindow::mouseMoveEvent(QMouseEvent *event)
+// {
+//     if (isFullScreenMode) {
+//         hideCursorTimer->stop();
+//         showControlBarAndCursor();
+//     }
+//     QMainWindow::mouseMoveEvent(event);
+// }
 void MainWindow::keyReleaseEvent(QKeyEvent* event){
-    VideoPlayer::State state = player_->getState();
-    if(state != VideoPlayer::Stopped){
+    PlayerCore::State state = player_->getState();
+    if(state != PlayerCore::Stopped){
         if(event->key() == Qt::Key_Right){
             timer.stop();
             if(!isLongPress){ //如果是短按
@@ -590,8 +628,8 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *pEvent)
 
     connect(fileInfoAction,&QAction::triggered,this,[this](){
         VideoInfoDialog *videoinfodialog = new VideoInfoDialog(this);
-        if(player_->getState() != VideoPlayer::Stopped){
-            videoinfodialog->updateinformation(player_->getAVFormatContext(),player_->getFilename());
+        if(player_->getState() != PlayerCore::Stopped){
+            videoinfodialog->updateinformation(player_->getAVFormatContext(),player_->getFileUrl().toStdString().c_str());
             videoinfodialog->show();
         }else{
             QMessageBox::information(NULL,"暂无播放视频","打开一个视频才有信息哦！",QMessageBox::Yes);
@@ -644,6 +682,57 @@ void MainWindow::restoreControlBarParent()
     ui->controlBarContainer->show();
 }
 
+
+void MainWindow::enterFullScreenMode()
+{
+    this->showFullScreen();
+    ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/exit_full_screen.png"));
+
+    isFullScreenMode = true;
+
+    ui->controlBarContainer->setParent(ui->videoWidget);
+    ui->controlBarContainer->raise();
+
+    QTimer::singleShot(0, this, [=]() {
+        ui->controlBarContainer->setGeometry(
+            0,
+            // 强制贴紧视频最底部
+            ui->videoWidget->height() - ui->controlBarContainer->height(),
+            ui->videoWidget->width(),
+            ui->controlBarContainer->height()
+            );
+    });
+
+    // 全屏透明样式
+    ui->controlBarContainer->setStyleSheet(R"(
+        background-color: rgba(0, 0, 0, 80);
+        border: none;
+        border-radius: 0px;
+    )");
+
+    showControlBarAndCursor();
+}
+
+void MainWindow::exitFullScreenMode()
+{
+    showNormal();
+    ui->fullScreenBtn->setIcon(QIcon(":/SmartPlayer-icon/full_screen.png"));
+    isFullScreenMode = false;
+    hideCursorTimer->stop();
+
+    restoreControlBarParent();
+    ui->controlBarContainer->setStyleSheet(originalControlBarStyle);
+
+    showControlBarAndCursor();
+}
+
+void MainWindow::centerLoadingLabel()
+{
+    if(!loadingLabel_) return;
+    int x = ui->videoWidget->width() / 2 - loadingLabel_->width() / 2;
+    int y = ui->videoWidget->height() / 2 - loadingLabel_->height() / 2;
+    loadingLabel_->move(x, y);
+}
 void MainWindow::messageInfo(QString info, int interval)
 {
     this->ui->infoLabel->setText(info);
@@ -662,6 +751,7 @@ void MainWindow::openFileList()
     ui->clearListBtn->show();
 
     ui->openListBtn->setIcon(QIcon(":/SmartPlayer-icon/right_arrow.png"));
+    centerLoadingLabel();
 }
 
 void MainWindow::closeFileList()
@@ -673,6 +763,7 @@ void MainWindow::closeFileList()
 
     ui->videoWidget->resize(ui->playerPage->width(),ui->playerPage->height());
     ui->openListBtn->setIcon(QIcon(":/SmartPlayer-icon/left_arrow.png"));
+    centerLoadingLabel();
 }
 
 void MainWindow::openVideoFromCommand(const QString &filePath)
@@ -687,7 +778,7 @@ void MainWindow::addToFileList(QString filePath)
 {
     if(!fileList.contains(filePath)){  //判断视频列表是否有当前视频文件
         QFileInfo temp(filePath);
-        qDebug() << picture_->getDuration();
+        //qDebug() << picture_->getDuration();
         QImage image = picture_->getPreViewImage(filePath,110,65);
         VideoItemWidget *itemWidget = new VideoItemWidget(image, temp.fileName(), getTimeText(picture_->getDuration()));
         QListWidgetItem *item = new QListWidgetItem(ui->fileList);
@@ -720,17 +811,12 @@ void MainWindow::addToFileList(QString filePath)
 
 void MainWindow::play(QString filePath)
 {
-    if(filePath.endsWith("mp4") || filePath.startsWith("file://"))
-    {
-        player_->setFilename(filePath);
-        player_->play();
-        preview_player_->setFilename(filePath);
-        preview_player_->play_preview();
-    }else{
-        player_->setFilename(filePath);
-        player_->play();
+    if(loadingLabel_){
+        centerLoadingLabel();
+        loadingLabel_->show();
+        ui->logoBtn->hide();
     }
-
+    player_->open(filePath);
 }
 
 
@@ -760,11 +846,11 @@ void MainWindow::on_volumeSlider_valueChanged(int value)
 void MainWindow::on_fileList_itemDoubleClicked(QListWidgetItem *item)
 {
     //点击播放列表时若正在播放则清除播放帧，重新打开文件
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Playing){
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Running){
         player_->stop();
         //preview
-        preview_player_->stopwithSignal();
+        preview_player_->stop();
     }
 
     QString fileAbsolutePath = item->data(Qt::UserRole).toString();
@@ -782,10 +868,28 @@ void MainWindow::on_fileList_itemDoubleClicked(QListWidgetItem *item)
 
 void MainWindow::on_rtspButton_clicked()
 {
-    QInputDialog dialog;
+    QInputDialog dialog(this);
     dialog.setWindowTitle("请输入网络流地址");
     dialog.setLabelText("地址：");
-
+    dialog.setStyleSheet(R"(
+        QLabel {
+            color: white;
+        }
+        QLineEdit {
+            color: white;
+            background-color: #3c3c3c;
+            border: 1px solid #555;
+        }
+        QPushButton {
+            color: white;
+            background-color: #444;
+            border: 1px solid #666;
+            padding: 5px;
+        }
+        QPushButton:hover {
+            background-color: #555;
+        }
+    )");
     QLineEdit* lineEdit = dialog.findChild<QLineEdit*>();
     if (lineEdit) {
         lineEdit->setStyleSheet("color: white;");
@@ -811,10 +915,9 @@ void MainWindow::on_rtspButton_clicked()
 
 void MainWindow::on_screenShotBtn_clicked()
 {
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Stopped) return;
-    QString filePath = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".png";
-    player_->requestSnapshot(filePath);
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Stopped) return;
+    player_->takeScreenshot();
 }
 
 
@@ -825,15 +928,15 @@ void MainWindow::on_settingBtn_clicked()
 
 void MainWindow::on_setHardWare(bool on)
 {
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Stopped){
-        player_->setIsHardWare(on);
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Stopped){
+        player_->useHardware(on);
         return;
     }
     player_->stop();
-    preview_player_->stopwithSignal();
+    preview_player_->stop();
 
-    player_->setIsHardWare(on);
+    player_->useHardware(on);
 
     play(fileList[listIndex]);
 
@@ -841,14 +944,15 @@ void MainWindow::on_setHardWare(bool on)
 
 void MainWindow::on_update_file_path(QString path)
 {
-    player_->setRootFilePath(path);
+    player_->setScreenshotSavePath(path);
 }
 
 void MainWindow::on_change_userDecoder(QString decoder)
 {
     if(decoder.isEmpty()) return;
-    VideoPlayer::State state = player_->getState();
-    if(state == VideoPlayer::Stopped){
+
+    PlayerCore::State state = player_->getState();
+    if(state == PlayerCore::Stopped){
         if(decoder == "默认(推荐)"){
             player_->setDecodeType(NULL);
         }else{
@@ -857,7 +961,7 @@ void MainWindow::on_change_userDecoder(QString decoder)
         return;
     }else{
         player_->stop();
-        preview_player_->stopwithSignal();
+        preview_player_->stop();
 
         if(decoder == "默认(推荐)"){
             player_->setDecodeType(NULL);
@@ -869,6 +973,96 @@ void MainWindow::on_change_userDecoder(QString decoder)
     }
 
 }
+
+void MainWindow::initPreviewWindow()
+{
+    previewContainer_ = new QWidget(ui->videoWidget);
+    previewContainer_->setObjectName("PreviewContainer");
+    previewContainer_->setStyleSheet(R"(
+        #PreviewContainer {
+            background-color: rgba(0, 0, 0, 160);
+            border-radius: 5px;
+        }
+    )");
+    previewContainer_->setVisible(false);
+    previewContainer_->setFixedSize(180, 130);
+
+    // 预览渲染控件
+    preview_ = new OpenGLRenderer;
+    preview_->setFixedSize(170, 100);
+    preview_->setRenderSource(OpenGLRenderer::RenderSource::Video);
+
+    previewTimeLabel_ = new QLabel;
+    previewTimeLabel_->setFixedHeight(25);
+    previewTimeLabel_->setStyleSheet(R"(
+        QLabel {
+            color: #f0f0f0;
+            font-size: 12px;
+            font-family: Microsoft YaHei;
+            qproperty-alignment: 'AlignHCenter | AlignTop';
+            background-color: transparent;
+            border: none;
+            padding: 1px;
+        }
+    )");
+
+
+    QVBoxLayout *previewLayout = new QVBoxLayout(previewContainer_);
+    previewLayout->addWidget(preview_, 0, Qt::AlignCenter);
+    previewLayout->addWidget(previewTimeLabel_);
+    previewLayout->setContentsMargins(0, 5, 0, 0);
+    previewLayout->setSpacing(0);
+}
+
+void MainWindow::initControlbarPresent()
+{
+    hideCursorTimer = new QTimer(this);
+    hideCursorTimer->setSingleShot(true);   // 单次触发
+    hideCursorTimer->setInterval(5000);     // 3秒超时
+    connect(hideCursorTimer, &QTimer::timeout, this, &MainWindow::hideControlBarAndCursor);
+    isFullScreenMode = false;
+
+    originalControlBarStyle = ui->controlBarContainer->styleSheet();
+}
+
+void MainWindow::initComponent()
+{
+    loadingLabel_ = new QLabel(ui->videoWidget);
+    loadingLabel_->setFixedSize(70, 70);
+    loadingLabel_->setAlignment(Qt::AlignCenter);
+    loadingLabel_->setStyleSheet("background:transparent;");
+    QMovie *movie = new QMovie(":/SmartPlayer-icon/loading_4.gif");
+    movie->setScaledSize(loadingLabel_->size());
+    loadingLabel_->setMovie(movie);
+    movie->start();
+    loadingLabel_->hide();
+}
+
+
+void MainWindow::on_frameNv12Decoded(const QByteArray &data, int width, int height)
+{
+    ui->videoWidget->uploadNV12Texture(data,width,height);
+}
+
+void MainWindow::on_frameRGBADecoded(const QByteArray &data, int width, int height)
+{
+    ui->videoWidget->uploadRGBATexture(data,width,height);
+}
+
+void MainWindow::on_frameYuv420pDecoded(const QByteArray &data, int width, int height)
+{
+    ui->videoWidget->uploadYUV420PTexture(data,width,height);
+}
+
+void MainWindow::on_previewFrameDecoded(const QByteArray &data, int w, int h, AVPixelFormat fmt)
+{
+    if (fmt == AV_PIX_FMT_YUV420P) {
+        preview_->uploadYUV420PTexture(data, w, h);
+    } else if (fmt == AV_PIX_FMT_NV12) {
+        preview_->uploadNV12Texture(data, w, h);
+    }
+}
+
 
 void MainWindow::on_show_message_info(QString info, int interval)
 {
@@ -892,4 +1086,87 @@ void MainWindow::on_fileList_currentItemChanged(QListWidgetItem *current, QListW
         }
     }
 }
+
+
+void MainWindow::on_progressSlider_sliderPressed()
+{
+    is_seeking = true;
+}
+
+
+void MainWindow::on_progressSlider_sliderReleased()
+{
+    is_seeking = false;
+    player_->seek(ui->progressSlider->value() * 1000000);
+}
+
+void MainWindow::on_screenshotStatus(const QString &path, bool isOk)
+{
+    if(isOk){
+        messageInfo("截图保存成功: " + path,5000);
+    }else{
+        messageInfo("截图保存失败",3000);
+    }
+}
+
+void MainWindow::hideControlBarAndCursor()
+{
+    if (!isFullScreenMode) return;
+    if (m_isMouseOverControlBar) {
+        hideCursorTimer->start();
+        return;
+    }
+
+    ui->controlBarContainer->hide();
+    this->setCursor(Qt::BlankCursor);
+}
+
+void MainWindow::showControlBarAndCursor()
+{
+    ui->controlBarContainer->show();
+    ui->controlBarContainer->raise();
+    this->unsetCursor();
+
+    if (isFullScreenMode) hideCursorTimer->start();
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event)
+{
+
+    if (!isFullScreenMode) {
+        return QMainWindow::eventFilter(obj, event);
+    }
+
+    if (obj == ui->controlBarContainer) {
+
+        if (event->type() == QEvent::Enter) {
+            m_isMouseOverControlBar = true;
+            hideCursorTimer->stop();
+            showControlBarAndCursor();
+        }
+
+        else if (event->type() == QEvent::Leave) {
+            m_isMouseOverControlBar = false;
+            hideCursorTimer->start();
+        }
+    }
+
+    if (obj == ui->videoWidget && event->type() == QEvent::MouseMove) {
+        hideCursorTimer->stop();
+        showControlBarAndCursor();
+    }
+
+    return QMainWindow::eventFilter(obj, event);
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    centerLoadingLabel();
+}
+
+// void MainWindow::on_progressSlider_sliderMoved(int position)
+// {
+//     player_->seek(position * 1000000);
+// }
 
