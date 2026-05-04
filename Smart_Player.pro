@@ -11,8 +11,14 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    subtitle/asrmanager.cpp \
+    subtitle/asrofflinestrategy.cpp \
+    subtitle/asrrealtimestrategy.cpp \
+    subtitle/asrworker.cpp \
     main.cpp \
     mainwindow.cpp \
+    subtitlepopup.cpp \
+    utils/audioringbuffer.cpp \
     utils/picturecreator.cpp \
     utils/log.cpp \
     previewplayer.cpp \
@@ -31,10 +37,21 @@ SOURCES += \
     decoder/decoder.cpp \
     filter/audiofilter.cpp \
     converter/videoconverter.cpp \
+    pool/framepool.cpp \
+    pool/packetpool.cpp \
     playercore.cpp \
 
 HEADERS += \
+    subtitle/asrmanager.h \
+    subtitle/asrofflinestrategy.h \
+    subtitle/asrrealtimestrategy.h \
+    subtitle/asrworker.h \
     mainwindow.h \
+    queue/subtitlequeue.h \
+    subtitle/iasrstrategy.h \
+    subtitlepopup.h \
+    utils/asrutils.h \
+    utils/audioringbuffer.h \
     utils/picturecreator.h \
     utils/log.h \
     previewplayer.h \
@@ -54,6 +71,9 @@ HEADERS += \
     decoder/decoder.h \
     filter/audiofilter.h \
     converter/videoconverter.h \
+    pool/framepool.h \
+    pool/gloabalpool.h \
+    pool/packetpool.h \
     playercore.h \
 
 FORMS += \
@@ -73,9 +93,9 @@ RESOURCES += \
 
 RC_FILE = app_icon.rc
 
-INCLUDEPATH += $$PWD/include
+INCLUDEPATH += $$PWD/dependencies/include
 
-LIBS        += -L$$PWD/lib -lavcodec -lavdevice -lavfilter -lavformat -lavutil -lpostproc -lswresample -lswscale -lSDL2
+LIBS        += -L$$PWD/dependencies/lib -lavcodec -lavdevice -lavfilter -lavformat -lavutil -lpostproc -lswresample -lswscale -lSDL2 -lwhisper -lggml -lggml-base -lggml-cpu
 LIBS += -ldbghelp
 DEFINES += SDL_MAIN_HANDLED
 DISTFILES += \

@@ -1,5 +1,6 @@
 #include "audiooutput.h"
 #include "syncclock.h"
+#include "pool/gloabalpool.h"
 #include <QDebug>
 #include <cstring>
 #include <cmath>
@@ -168,12 +169,13 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
             }
 
             if (frame->nb_samples <= 0 || frame->format == AV_SAMPLE_FMT_NONE) {
-                av_frame_unref(frame);
+                //av_frame_unref(frame);
+                GlobalPool::getFramePool().recycle(frame);
                 continue;
             }
             if (need_resample_) {
                 if(!resampler_){
-                    av_frame_free(&frame);
+                    GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
                 int out_samples = 0;
@@ -181,7 +183,7 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
 
                 audio_buf_ = (uint8_t*)realloc(audio_buf_, buf_size);
                 if(!audio_buf_){
-                    av_frame_free(&frame);
+                    GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
 
@@ -193,32 +195,29 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                     frame->nb_samples, (AVSampleFormat)frame->format, 1
                     );
                 if(audio_buf_size_ <=0){
-                    av_frame_free(&frame);
+                    GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
 
                 audio_buf_ = (uint8_t*)realloc(audio_buf_, audio_buf_size_);
                 if(!audio_buf_){
-                    av_frame_free(&frame);
+                    GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
 
                 if(!frame->data[0]){
-                    av_frame_free(&frame);
+                    GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
                 memcpy(audio_buf_, frame->data[0], audio_buf_size_);
             }
 
             audio_buf_index_ = 0;
-
-            // double pts = frame->pts * av_q2d({1, sample_rate_});
-            // audio_clock_us_ = pts * 1000000;
-
             audio_clock_us_ = av_rescale_q(frame->pts,audio_timebase_, {1, 1000000});
             sync_clock_->set_audio_clock(audio_clock_us_);
 
-            av_frame_free(&frame);
+
+            GlobalPool::getFramePool().recycle(frame);
         }
 
         int copy_len = qMin(len_remaining, (int)(audio_buf_size_ - audio_buf_index_));

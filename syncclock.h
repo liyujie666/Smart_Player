@@ -181,6 +181,7 @@ public:
     int64_t get_diff() const { return m_last_pts - m_audio_clock; }
     int64_t get_audio_clock() const { return m_audio_clock; }
     int64_t get_last_pts() const { return m_last_pts; }
+    double get_speed() const { return m_speed;}
 
 private:
     int64_t m_audio_clock;

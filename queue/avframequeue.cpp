@@ -1,5 +1,6 @@
 #include "avframequeue.h"
 #include "utils/log.h"
+#include "pool/gloabalpool.h"
 AVFrameQueue::AVFrameQueue()
 {
 
@@ -19,9 +20,17 @@ void AVFrameQueue::Abort()
 int AVFrameQueue::Push(AVFrame *val)
 {
     if (!val) return -1;
-    AVFrame* tmp = av_frame_alloc();
-    av_frame_move_ref(tmp,val);
-    return queue_.Push(tmp);
+
+    AVFrame* tmp = GlobalPool::getFramePool().get();
+    if (!tmp) return -1;
+
+    av_frame_move_ref(tmp, val);
+
+    int ret = queue_.Push(tmp);
+    if (ret < 0) {
+        GlobalPool::getFramePool().recycle(tmp);
+    }
+    return ret;
 }
 
 AVFrame *AVFrameQueue::Pop(const int timeout)
@@ -62,7 +71,8 @@ void AVFrameQueue::release()
         if(ret < 0) {
             break;
         } else {
-            av_frame_free(&frame);
+            //av_frame_free(&frame);
+            GlobalPool::getFramePool().recycle(frame);
             continue;
         }
     }
@@ -75,6 +85,7 @@ void AVFrameQueue::clear() {
 void AVFrameQueue::dropFront() {
     AVFrame *frame = Pop(0);
     if (frame) {
-        av_frame_free(&frame);
+        //av_frame_free(&frame);
+        GlobalPool::getFramePool().recycle(frame);
     }
 }

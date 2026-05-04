@@ -1,6 +1,7 @@
 #include "openglrenderer.h"
 #include <QDebug>
 #include <cstring>
+#include <QPainter>
 
 const float OpenGLRenderer::texCoords_[] = {
     0.0f, 1.0f,
@@ -27,6 +28,7 @@ OpenGLRenderer::~OpenGLRenderer()
     if(vTexture_)   { vTexture_->destroy(); delete vTexture_; vTexture_ = nullptr; }
     if(uvTexture_)  { uvTexture_->destroy(); delete uvTexture_; uvTexture_ = nullptr; }
     if(rgbTexture_) { rgbTexture_->destroy(); delete rgbTexture_; rgbTexture_ = nullptr; }
+    if(subtitleTexture_) { subtitleTexture_->destroy(); delete subtitleTexture_; subtitleTexture_ = nullptr; }
 
     delete program_;
     delete vao_;
@@ -111,6 +113,7 @@ void OpenGLRenderer::initializeGL()
 
     void main() {
         vec3 rgb;
+        float alpha = 1.0;
         if(renderMode == 0 || renderMode == 1) {
             float y = texture2D(yTexture, vTexCoord).r;
             float u = 0.0, v = 0.0;
@@ -138,7 +141,9 @@ void OpenGLRenderer::initializeGL()
             rgb = clamp(vec3(R, G, B), 0.0, 1.0);
         }
         else {
-            rgb = texture2D(rgbTexture, vTexCoord).rgb;
+            vec4 rgba = texture2D(rgbTexture, vTexCoord);
+            rgb = rgba.rgb;
+            alpha = rgba.a;
         }
 
         // 画面调节
@@ -147,7 +152,7 @@ void OpenGLRenderer::initializeGL()
         float gray = dot(rgb, vec3(0.299, 0.504, 0.098));
         rgb = mix(vec3(gray), rgb, saturation);
 
-        gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), 1.0);
+        gl_FragColor = vec4(clamp(rgb, 0.0, 1.0), alpha);
     }
     )";
 
@@ -180,12 +185,14 @@ void OpenGLRenderer::initializeGL()
     vTexture_  = new QOpenGLTexture(QOpenGLTexture::Target2D);
     uvTexture_ = new QOpenGLTexture(QOpenGLTexture::Target2D);
     rgbTexture_ = new QOpenGLTexture(QOpenGLTexture::Target2D);
+    subtitleTexture_ = new QOpenGLTexture(QOpenGLTexture::Target2D);
 
     setupTexture(yTexture_);
     setupTexture(uTexture_);
     setupTexture(vTexture_);
     setupTexture(uvTexture_);
     setupTexture(rgbTexture_);
+    setupTexture(subtitleTexture_);
 }
 
 void OpenGLRenderer::resizeGL(int w, int h)
@@ -240,6 +247,51 @@ void OpenGLRenderer::paintGL()
     }
 
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    // 绘制字幕
+    if (!currentSubtitle_.isEmpty() && subtitleTexture_->isCreated() && subTitleWidth_ > 0) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        program_->setUniformValue("renderMode", (int)RGBA);
+        program_->setUniformValue("brightness", 0.0f);
+        program_->setUniformValue("contrast", 1.0f);
+        program_->setUniformValue("saturation", 1.0f);
+
+        float subHeightNDC = (float)subTitleHeight_ * 2.0f / height_;
+        float subWidthNDC = (float)subTitleWidth_ * 2.0f / width_;
+        float left = -subWidthNDC / 2.0f;
+        float right = subWidthNDC / 2.0f;
+        float bottom = -1.0f;
+        float top = bottom + subHeightNDC;
+
+        // 字幕顶点
+        float subVertices[] = {
+            left,  bottom,
+            right, bottom,
+            left,  top,
+            right, top
+        };
+        // 纹理坐标
+        float subTexCoords[] = {0.0f,1.0f, 1.0f,1.0f, 0.0f,0.0f, 1.0f,0.0f};
+
+        vbo_->bind();
+        vbo_->write(0, subVertices, 8 * sizeof(float));
+        vbo_->write(8*sizeof(float), subTexCoords, 8*sizeof(float));
+        vbo_->release();
+
+        program_->setUniformValue("rgbTexture", 0);
+        subtitleTexture_->bind(0);
+
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDisable(GL_BLEND);
+    }
 
     program_->release();
     vao_->release();
@@ -334,6 +386,62 @@ void OpenGLRenderer::uploadRGBATexture(const QByteArray &rgbData, int width, int
     update();
 }
 
+void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
+{
+    if (currentSubtitle_ == text) {
+        return;
+    }
+    currentSubtitle_ = text;
+
+    if (text.isEmpty() || width_ <= 0) {
+        makeCurrent();
+        if (subtitleTexture_->isCreated()) {
+            subtitleTexture_->destroy();
+        }
+        doneCurrent();
+        update();
+        return;
+    }
+
+    // 计算文字实际宽度
+    QFont font;
+    font.setPointSize(26);
+    font.setBold(true);
+    font.setFamily("Microsoft YaHei");
+    QFontMetrics fm(font);
+    int textWidth = fm.horizontalAdvance(text);
+    int subWidth = textWidth + 40;
+    int subHeight = SUBTITLE_HEIGHT;
+
+    // 自适应宽度的图片
+    QImage img(subWidth, subHeight, QImage::Format_RGBA8888);
+    img.fill(QColor(0, 0, 0, 150));
+
+    // 绘制文字
+    QPainter painter(&img);
+    painter.setPen(Qt::white);
+    painter.setFont(font);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.drawText(img.rect(), Qt::AlignCenter, text);
+    painter.end();
+
+    // 上传自适应尺寸的字幕纹理
+    makeCurrent();
+    subtitleTexture_->destroy();
+    subtitleTexture_->setSize(subWidth, subHeight);
+    subtitleTexture_->setFormat(QOpenGLTexture::RGBA8_UNorm);
+    subtitleTexture_->allocateStorage();
+    subtitleTexture_->setData(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8, img.bits());
+    setupTexture(subtitleTexture_);
+
+    subTitleWidth_ = subWidth;
+    subTitleHeight_ = subHeight;
+
+    doneCurrent();
+    update();
+}
+
+
 void OpenGLRenderer::renderCoverImage(const QImage &image)
 {
     if (image.isNull()) return;
@@ -353,6 +461,7 @@ void OpenGLRenderer::stop()
 {
     if (!isValid()) return;
     isStopped = true;
+    clearSubtitle();
     update();
 }
 
@@ -362,6 +471,19 @@ void OpenGLRenderer::clear()
     makeCurrent();
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
+    doneCurrent();
+    update();
+}
+
+void OpenGLRenderer::clearSubtitle()
+{
+    currentSubtitle_.clear();
+    subTitleWidth_ = 0;  // 重置尺寸
+    subTitleHeight_ = 0;
+    makeCurrent();
+    if (subtitleTexture_->isCreated()) {
+        subtitleTexture_->destroy();
+    }
     doneCurrent();
     update();
 }

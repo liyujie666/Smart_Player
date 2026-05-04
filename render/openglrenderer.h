@@ -33,11 +33,13 @@ public:
     void uploadYUV420PTexture(const QByteArray &yuvData, int width, int height);
     void uploadNV12Texture(const QByteArray &nv12Data, int width, int height);
     void uploadRGBATexture(const QByteArray &rgbData, int width, int height);
+    void uploadSubtitleTexture(const QString& text);
     void renderCoverImage(const QImage &image);
     void start();
     void stop();
     void clear();
 
+    void clearSubtitle();
     void setRenderSource(RenderSource source);
     void setSizeMode(int mode);
     void setBrightness(float value);
@@ -70,21 +72,30 @@ private:
     QOpenGLTexture* vTexture_ = nullptr;
     QOpenGLTexture* uvTexture_ = nullptr;
     QOpenGLTexture* rgbTexture_ = nullptr;
+    QOpenGLTexture* subtitleTexture_ = nullptr;
 
     int width_ = 0;
     int height_ = 0;
     int videoWidth_ = 0;
     int videoHeight_ = 0;
+    int subTitleWidth_ = 0;
+    int subTitleHeight_ = 0;
     RenderMode renderMode_ = YUV420P;
     RenderSource currentSource_ = RenderSource::None;
     SizeMode sizeMode_ = Fit;
 
-    float brightness_ = 0.0f;    // 默认0（无变化）
-    float contrast_ = 1.0f;     // 默认1（无变化）
-    float saturation_ = 1.0f;   // 默认1（无变化）
+    // 色彩控制
+    float brightness_ = 0.0f;
+    float contrast_ = 1.0f;
+    float saturation_ = 1.0f;
 
     static const float texCoords_[];
     std::atomic<bool> isStopped = false;
+
+    // 字幕
+    QString currentSubtitle_;
+    static constexpr int SUBTITLE_HEIGHT = 60;
+    static constexpr float SUBTITLE_BG_ALPHA = 0.7f;
 };
 
 #endif // OPENGLRENDERER_H

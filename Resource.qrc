@@ -46,5 +46,9 @@
         <file>SmartPlayer-icon/loading_5.gif</file>
         <file>SmartPlayer-icon/image_audio_1.png</file>
         <file>SmartPlayer-icon/image_audio_2.jpg</file>
+        <file>SmartPlayer-icon/ai_subtitles_1.png</file>
+        <file>SmartPlayer-icon/ai_subtitles_2.png</file>
+        <file>SmartPlayer-icon/checked.png</file>
+        <file>SmartPlayer-icon/uncheck.png</file>
     </qresource>
 </RCC>

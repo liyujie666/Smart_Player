@@ -10,6 +10,7 @@
 #include "controlbarmanager.h"
 #include "utils/picturecreator.h"
 #include "videoitemwidget.h"
+#include "subtitlepopup.h"
 #include <QMainWindow>
 #include <qlistwidget.h>
 #include <QVector>
@@ -85,6 +86,7 @@ private slots:
     void on_frameNv12Decoded(const QByteArray &data, int width, int height);
     void on_frameRGBADecoded(const QByteArray& rgbData,int width,int height);
     void on_previewFrameDecoded(const QByteArray& data, int w, int h, AVPixelFormat fmt);
+    void on_subtitleReady(const QString& text);
     void on_progressSlider_sliderPressed();
     void on_progressSlider_sliderReleased();
     void on_screenshotStatus(const QString& path,bool isOk);
@@ -93,6 +95,8 @@ private slots:
     void showControlBarAndCursor();
 
     //void on_progressSlider_sliderMoved(int position);
+
+    void on_subtitleBtn_clicked();
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -123,9 +127,9 @@ private:
     OpenGLRenderer *preview_;
     QWidget *previewContainer_ = nullptr;
     QLabel *previewTimeLabel_ = nullptr;
-
-    QMenu *popMenu;
-    PictureCreator* picture_;
+    QMenu *popMenu = nullptr;
+    PictureCreator* picture_ = nullptr;
+    SubtitlePopup *subtitlePopup_ = nullptr;
 
 
     QVector<QString> fileList;//文件列表

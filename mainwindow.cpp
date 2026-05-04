@@ -58,7 +58,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(player_,&PlayerCore::frameYuv420pDecoded,this,&MainWindow::on_frameYuv420pDecoded);//视频渲染
     connect(player_,&PlayerCore::frameNv12Decoded,this,&MainWindow::on_frameNv12Decoded);//视频渲染
     connect(player_,&PlayerCore::frameRGBADecoded,this,&MainWindow::on_frameRGBADecoded);//视频渲染
+    connect(player_, &PlayerCore::subtitleReady,this, &MainWindow::on_subtitleReady);
     connect(preview_player_,&PreviewPlayer::previewFrameReady,this,&MainWindow::on_previewFrameDecoded);
+
     connect(ui->progressSlider, &VideoSlider::clicked,this, &MainWindow::onSliderClicked);  //进度条点击
     connect(ui->progressSlider,&VideoSlider::preview,this,&MainWindow::onSliderMouseFoucs);    //进度条鼠标悬停（显示预览图片
     connect(ui->progressSlider,&VideoSlider::mouseleave,this,&MainWindow::onMouseLeaveSlider);    //进度条鼠标移动（关闭预览图片）
@@ -127,8 +129,8 @@ void MainWindow::onPlayerStateChanged()
     }
     if(state == PlayerCore::Stopped){
         // ui->startBtn->setEnabled(false);
-        ui->preVideoBtn->setEnabled(false);
-        ui->nextVideoBtn->setEnabled(false);
+        //ui->preVideoBtn->setEnabled(false);
+        //ui->nextVideoBtn->setEnabled(false);
         ui->back3sBtn->setEnabled(false);
         ui->forward3sBtn->setEnabled(false);
         ui->stopBtn->setEnabled(false);
@@ -733,6 +735,7 @@ void MainWindow::centerLoadingLabel()
     int y = ui->videoWidget->height() / 2 - loadingLabel_->height() / 2;
     loadingLabel_->move(x, y);
 }
+
 void MainWindow::messageInfo(QString info, int interval)
 {
     this->ui->infoLabel->setText(info);
@@ -1063,6 +1066,11 @@ void MainWindow::on_previewFrameDecoded(const QByteArray &data, int w, int h, AV
     }
 }
 
+void MainWindow::on_subtitleReady(const QString &text)
+{
+    ui->videoWidget->uploadSubtitleTexture(text);
+}
+
 
 void MainWindow::on_show_message_info(QString info, int interval)
 {
@@ -1169,4 +1177,33 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 // {
 //     player_->seek(position * 1000000);
 // }
+
+
+void MainWindow::on_subtitleBtn_clicked()
+{
+
+    if (!subtitlePopup_) {
+        subtitlePopup_ = new SubtitlePopup(this);
+        connect(subtitlePopup_->realtimeBtn_, &QPushButton::toggled, this, [this](bool on){
+            qDebug() << "实时字幕:" << on;
+            player_->setAsrEnabled(on);
+        });
+
+        connect(subtitlePopup_->translateBtn_, &QPushButton::toggled, this, [](bool on){
+            qDebug() << "中英翻译:" << on;
+        });
+    }
+
+    subtitlePopup_->adjustSize();  // 很关键
+
+    QPoint btnGlobal = ui->subtitleBtn->mapToGlobal(QPoint(0, 0));
+
+    int btnCenterX = btnGlobal.x() + ui->subtitleBtn->width() / 2;
+    int popupX = btnCenterX - subtitlePopup_->width() / 2;
+
+    int popupY = btnGlobal.y() - subtitlePopup_->height() - 8;
+
+    subtitlePopup_->move(popupX, popupY);
+    subtitlePopup_->show();
+}
 

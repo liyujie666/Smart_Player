@@ -1,4 +1,5 @@
 #include "playercore.h"
+#include "pool/gloabalpool.h"
 #include <QDebug>
 #include <QImage>
 #include <QDir>
@@ -15,7 +16,9 @@ PlayerCore::PlayerCore(QObject *parent)
     video_pkt_queue_ = new AVPacketQueue();
     audio_frame_queue_ = new AVFrameQueue();
     video_frame_queue_ = new AVFrameQueue();
+    //subtitle_queue_ = new SubtitleQueue();
     sync_clock_ = new AVSyncClock();
+    asr_manager_ = std::make_unique<AsrManager>();
 }
 
 PlayerCore::~PlayerCore()
@@ -114,6 +117,16 @@ bool PlayerCore::openInternal(const QString &url)
     duration_ms_ = demuxer_->getDuration();
     state_ = Stopped;
 
+    // 字幕
+    if (asrEnabled_ && hasAudio_) {
+        asr_manager_->setModelPath(model_path_);
+        AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
+        bool ok = asr_manager_->init(url, demuxer_->mediaType(), as);
+        if(ok){
+            asr_manager_->start();
+        }
+    }
+
     emit initFinished();
     return true;
 }
@@ -201,6 +214,7 @@ void PlayerCore::initVideoModule()
              << " 格式:" << av_get_pix_fmt_name(in_spec.pixFmt);
 }
 
+
 void PlayerCore::play()
 {
     QMutexLocker lock(&mutex_);
@@ -274,7 +288,7 @@ void PlayerCore::stop()
     if (state_ == Stopped) {
         return;
     }
-
+    asr_manager_->stop();
     {
         QMutexLocker lock(&mutex_);
         is_exit_ = true;
@@ -312,6 +326,8 @@ void PlayerCore::stop()
 
     releaseResources();
     sync_clock_->reset();
+    emit subtitleReady("");
+
     state_ = Stopped;
     duration_ms_ = 0;
     audio_stream_idx_ = -1;
@@ -366,6 +382,7 @@ void PlayerCore::seek(int64_t pos_sec)
     if (audio_decoder_) audio_decoder_->flush();
 
     sync_clock_->reset();
+    asr_manager_->reset();
 
     is_seek_ = false;
     cond_.wakeAll();
@@ -405,6 +422,29 @@ bool PlayerCore::isMute() const
     return false;
 }
 
+
+void PlayerCore::setAsrEnabled(bool enabled)
+{
+    asrEnabled_ = enabled;
+    if(state_ == State::Stopped) return;
+
+    if (enabled) {
+        asr_manager_->setModelPath(model_path_);
+        AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
+        bool ok = asr_manager_->init(file_url_, demuxer_->mediaType(), as);
+        if(ok){
+            asr_manager_->start();
+        }
+    } else {
+        asr_manager_->stop();
+        emit subtitleReady("");
+    }
+}
+
+bool PlayerCore::isAsrEnabled() const
+{
+    return asrEnabled_;
+}
 
 void PlayerCore::demuxThreadFunc()
 {
@@ -504,21 +544,19 @@ void PlayerCore::audioDecodeThreadFunc()
 
         // 解码
         int ret = audio_decoder_->decode(pkt, decoded_frame);
-        av_packet_free(&pkt);
+        //av_packet_free(&pkt);
+        GlobalPool::getPacketPool().recycle(pkt);
 
-        // 处理解码返回值
         if (ret == AVERROR(EAGAIN)) {
             continue;
         }
         if (ret == AVERROR_EOF) {
-            // 解码结束
             qDebug() << "音频解码完成（EOF）";
             is_exit_ = true;
             cond_.wakeAll();
             break;
         }
         if (ret < 0) {
-            // 解码失败
             qDebug() << "音频解码失败，错误码：" << ret;
             continue;
         }
@@ -537,7 +575,8 @@ void PlayerCore::audioDecodeThreadFunc()
 
         int64_t pts = (decoded_frame->pts == AV_NOPTS_VALUE) ? NAN : decoded_frame->pts;
         double duration = av_q2d((AVRational) { decoded_frame->nb_samples, decoded_frame->sample_rate });
-
+        // sendFrameToAsr(decoded_frame);
+        asr_manager_->sendAudioFrame(decoded_frame);
         // 倍速滤镜处理
         if (audio_filter_ && audio_filter_->isInitialized())
         {
@@ -569,7 +608,10 @@ void PlayerCore::audioDecodeThreadFunc()
         filtered_frame->duration = duration;
 
         audio_frame_queue_->Push(filtered_frame);
-        if(!hasVideo_) emit timeChanged();
+        if(!hasVideo_) {
+            emit timeChanged();
+            checkAndUpdateSubtitle();
+        }
         //qDebug() << "aframe queue size " << audio_frame_queue_->Size();
         av_frame_unref(decoded_frame);
         av_frame_unref(filtered_frame);
@@ -607,7 +649,8 @@ void PlayerCore::videoDecodeThreadFunc()
         if (!pkt) continue;
 
         int ret = video_decoder_->decode(pkt, decoded_frame);
-        av_packet_free(&pkt);
+        //av_packet_free(&pkt);
+        GlobalPool::getPacketPool().recycle(pkt);
 
         if (ret == AVERROR(EAGAIN)) {
             continue;
@@ -679,7 +722,7 @@ void PlayerCore::videoRenderThreadFunc()
 
         // 严重滞后，丢帧追赶
         if (sync_clock_->need_force_catch_up()) {
-            av_frame_unref(frame);
+            GlobalPool::getFramePool().recycle(frame);
             continue;
         }
 
@@ -732,7 +775,7 @@ void PlayerCore::videoRenderThreadFunc()
         }
         else {
             qWarning() << "不支持的视频格式：" << av_get_pix_fmt_name(fmt);
-            av_frame_unref(frame);
+            GlobalPool::getFramePool().recycle(frame);
             continue;
         }
 
@@ -745,9 +788,9 @@ void PlayerCore::videoRenderThreadFunc()
         }
 
         emit timeChanged();
-        av_frame_unref(frame);
+        checkAndUpdateSubtitle();
+        GlobalPool::getFramePool().recycle(frame);
     }
-    av_frame_free(&frame);
     qDebug() << "视频渲染线程退出";
 }
 
@@ -831,13 +874,25 @@ double PlayerCore::getSpeedFromIndex(int speedIndex)
     }
 }
 
+void PlayerCore::checkAndUpdateSubtitle()
+{
+    if (state_ == Stopped || state_ == Paused) return;
+    double now = getCurrentTimeSec();
+    SubtitleItem sub = asr_manager_->queue()->getCurrent(now);
+    if (sub.text != current_display_sub_.text) {
+        current_display_sub_ = sub;
+        emit subtitleReady(QString::fromStdString(sub.text));
+    }
+}
+
+
 void PlayerCore::clearAllQueues()
 {
     if (audio_pkt_queue_)   audio_pkt_queue_->clear();
     if (video_pkt_queue_)   video_pkt_queue_->clear();
     if (audio_frame_queue_) audio_frame_queue_->clear();
     if (video_frame_queue_) video_frame_queue_->clear();
-    //qDebug() << "队列已清空";
+
 }
 
 void PlayerCore::releaseResources()
@@ -894,6 +949,15 @@ int64_t PlayerCore::getCurrentPos() const
         return sync_clock_->getCurrentSystemClock() / 1000000;
     }
     return 0;
+}
+
+double PlayerCore::getCurrentTimeSec() const
+{
+    if (hasAudio_)
+        return sync_clock_->get_audio_clock() / 1000000.0;
+    if (hasVideo_)
+        return sync_clock_->getCurrentSystemClock() / 1000000.0;
+    return 0.0;
 }
 
 Demuxer::MediaType PlayerCore::getMediaType() const

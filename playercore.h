@@ -16,7 +16,10 @@
 #include "render/audiooutput.h"
 #include "queue/avpacketqueue.h"
 #include "queue/avframequeue.h"
+#include "queue/subtitlequeue.h"
 #include "syncclock.h"
+#include "utils/audioringbuffer.h"
+#include "subtitle/asrmanager.h"
 
 class PlayerCore : public QObject
 {
@@ -53,9 +56,15 @@ public:
     void setMute(bool mute);
     bool isMute() const;
 
+    // 字幕
+    void setAsrEnabled(bool enabled);
+    bool isAsrEnabled() const;
+
+
     // 获取信息
     int64_t getDuration() const;          // 总时长(ms)
     int64_t getCurrentPos() const;        // 当前播放位置(ms)
+    double getCurrentTimeSec() const;
     State getState() const;               // 获取状态
     Demuxer::MediaType getMediaType() const;
     AVFormatContext* getAVFormatContext() const;
@@ -73,6 +82,8 @@ signals:
     void frameYuv420pDecoded(const QByteArray& yuvData,int width,int height);
     void frameNv12Decoded(const QByteArray& yuvData,int width,int height);
     void frameRGBADecoded(const QByteArray& rgbData,int width,int height);
+    void subtitleReady(const QString& text);
+
 private:
     bool openInternal(const QString &url);
     void demuxThreadFunc();       // 解复用线程
@@ -84,8 +95,12 @@ private:
     void clearAllQueues();        // 清空所有队列(Seek/Stop用)
     void initAudioModule();       // 初始化音频模块(重采样/滤镜/输出)
     void initVideoModule();       // 初始化视频模块(转换器)
+    void sendFrameToAsr(AVFrame* frame);
+    void onSubtitleReady(const SubtitleItem& item);
     void saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format);
     double getSpeedFromIndex(int speedIndex);
+    void checkAndUpdateSubtitle();
+
 private:
 
     // 状态控制
@@ -122,8 +137,24 @@ private:
     QThread* video_render_thread_ = nullptr;
     AVSyncClock* sync_clock_ = nullptr;
 
+    // 字幕
+    // std::unique_ptr<Resampler> asrResampler_;
+    // std::unique_ptr<AsrWorker> asrWorker_;
+    // AudioPcmRingBuffer asrRingBuffer_{160000, 16000}; // 10秒缓存
+    // bool asrEnabled_ = false;
+    // bool asrRunning_ = false;
+    // AVRational audioTimeBase_ {1, 1};
+    // SubtitleQueue* subtitle_queue_ = nullptr;
+    // SubtitleItem current_display_sub_;
+    std::unique_ptr<AsrManager> asr_manager_;
+    QString model_path_ = "D:/Qt/ffmpegProjects/Smart_Player/dependencies/models/ggml-medium.bin";
+    bool asrEnabled_ = false;
+    SubtitleItem current_display_sub_;
+
+
+
     // 媒体参数
-    QString file_url_ = nullptr;
+    QString file_url_;
     int64_t duration_ms_ = 0;
     int video_stream_idx_ = -1;
     int audio_stream_idx_ = -1;

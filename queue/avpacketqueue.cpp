@@ -1,5 +1,6 @@
 #include "avpacketqueue.h"
 #include "utils/log.h"
+#include "pool/gloabalpool.h"
 AVPacketQueue::AVPacketQueue()
 {
 
@@ -30,9 +31,17 @@ bool AVPacketQueue::isEmpty()
 int AVPacketQueue::Push(AVPacket *val)
 {
     if (!val) return -1;
-    AVPacket* tmp = av_packet_alloc();
-    av_packet_move_ref(tmp,val);
-    return queue_.Push(tmp);
+
+    AVPacket* tmp = GlobalPool::getPacketPool().get();
+    if (!tmp) return -1;
+
+    av_packet_move_ref(tmp, val);
+
+    int ret = queue_.Push(tmp);
+    if (ret < 0) {
+        GlobalPool::getPacketPool().recycle(tmp);
+    }
+    return ret;
 }
 
 AVPacket *AVPacketQueue::Pop(const int timeout)
@@ -49,9 +58,10 @@ void AVPacketQueue::release() {
     AVPacket *pkt = nullptr;
 
     while (queue_.Pop(pkt, 0) == 0) {
-        av_packet_free(&pkt);
+        //av_packet_free(&pkt);
+        GlobalPool::getPacketPool().recycle(pkt);
     }
-    queue_.clear(); // 调用新增的清空接口
+    queue_.clear();
 }
 
 void AVPacketQueue::clear() {
@@ -61,6 +71,7 @@ void AVPacketQueue::clear() {
 void AVPacketQueue::dropFront() {
     AVPacket *pkt = Pop(0);
     if (pkt) {
-        av_packet_free(&pkt);
+        //av_packet_free(&pkt);
+        GlobalPool::getPacketPool().recycle(pkt);
     }
 }
