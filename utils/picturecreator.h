@@ -15,6 +15,7 @@ public:
 
     QImage getPreViewImage(const QString &videoPath,int maxWidth = 120,int maxHeight = 90);
     int getDuration();
+    int getDuration(const QString &videoPath);
     QString getFileType(const QString &videoPath);
 private:
     QImage convertFrameToQImage(AVFrame *frame, int maxWidth, int maxHeight);

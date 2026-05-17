@@ -50,5 +50,6 @@
         <file>SmartPlayer-icon/ai_subtitles_2.png</file>
         <file>SmartPlayer-icon/checked.png</file>
         <file>SmartPlayer-icon/uncheck.png</file>
+        <file>SmartPlayer-icon/reset.png</file>
     </qresource>
 </RCC>

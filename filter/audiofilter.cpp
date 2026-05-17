@@ -46,10 +46,22 @@ int AudioFilter::init(int sampleRate, AVSampleFormat sampleFmt, int chs) {
     chLayoutStr_ = buf;
 
     // 创建所有倍速滤镜
-    if (createSingleFilter(Speed_0_5, 0.5) < 0) return -1;
-    if (createSingleFilter(Speed_1_0, 1.0) < 0) return -1;
-    if (createSingleFilter(Speed_1_5, 1.5) < 0) return -1;
-    if (createSingleFilter(Speed_2_0, 2.0) < 0) return -1;
+    if (createSingleFilter(Speed_0_5, 0.5) < 0) {
+        closeInternal();
+        return -1;
+    }
+    if (createSingleFilter(Speed_1_0, 1.0) < 0) {
+        closeInternal();
+        return -1;
+    }
+    if (createSingleFilter(Speed_1_5, 1.5) < 0) {
+        closeInternal();
+        return -1;
+    }
+    if (createSingleFilter(Speed_2_0, 2.0) < 0) {
+        closeInternal();
+        return -1;
+    }
 
     isInitialized_ = true;
     qDebug() << "AudioFilter init success";
@@ -79,6 +91,8 @@ int AudioFilter::createSingleFilter(int index, double speed) {
     g.srcCtx = avfilter_graph_alloc_filter(g.graph, srcFilter, "src");
     if (!g.srcCtx || avfilter_init_str(g.srcCtx, srcArgs.c_str()) < 0) {
         qDebug() << "abuffer init failed:" << srcArgs.c_str();
+        avfilter_graph_free(&g.graph);
+        g.graph = nullptr;
         return -1;
     }
 
@@ -90,6 +104,8 @@ int AudioFilter::createSingleFilter(int index, double speed) {
     if (!atempoCtx || avfilter_init_dict(atempoCtx, &dict) < 0) {
         qDebug() << "atempo init failed speed:" << speed;
         av_dict_free(&dict);
+        avfilter_graph_free(&g.graph);
+        g.graph = nullptr;
         return -1;
     }
     av_dict_free(&dict);
@@ -99,6 +115,8 @@ int AudioFilter::createSingleFilter(int index, double speed) {
     AVFilterContext *aformatCtx = avfilter_graph_alloc_filter(g.graph, aformatFilter, "aformat");
     if (avfilter_init_str(aformatCtx, aformatArgs.c_str()) < 0) {
         qDebug() << "aformat init failed!";
+        avfilter_graph_free(&g.graph);
+        g.graph = nullptr;
         return -1;
     }
 
@@ -107,6 +125,8 @@ int AudioFilter::createSingleFilter(int index, double speed) {
     g.sinkCtx = avfilter_graph_alloc_filter(g.graph, sinkFilter, "sink");
     if (!g.sinkCtx || avfilter_init_dict(g.sinkCtx, nullptr) < 0) {
         qDebug() << "abuffersink init failed";
+        avfilter_graph_free(&g.graph);
+        g.graph = nullptr;
         return -1;
     }
 
@@ -115,12 +135,16 @@ int AudioFilter::createSingleFilter(int index, double speed) {
         avfilter_link(atempoCtx,  0, aformatCtx, 0) != 0 ||
         avfilter_link(aformatCtx, 0, g.sinkCtx,  0) != 0) {
         qDebug() << "filter link failed";
+        avfilter_graph_free(&g.graph);
+        g.graph = nullptr;
         return -1;
     }
 
     // 配置滤镜图
     if (avfilter_graph_config(g.graph, nullptr) < 0) {
         qDebug() << "avfilter_graph_config failed";
+        avfilter_graph_free(&g.graph);
+        g.graph = nullptr;
         return -1;
     }
 

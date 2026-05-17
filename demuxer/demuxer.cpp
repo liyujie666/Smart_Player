@@ -139,7 +139,7 @@ int Demuxer::seek(int64_t timestamp_sec, bool useVideoStream)
 
     int ret = av_seek_frame(fmtCtx_, streamIdx, target_ts, AVSEEK_FLAG_BACKWARD);
     CHECK_FF_ERROR(ret, av_seek_frame);
-    return 0;
+    return ret;
 }
 
 AVStream *Demuxer::getStream(AVMediaType type) const

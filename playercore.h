@@ -50,6 +50,7 @@ public:
     // 截图
     void setScreenshotSavePath(const QString& savePath);
     void takeScreenshot();
+    void saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format, const QString& savePath);
 
     // 音量
     void setVolume(int val);
@@ -58,7 +59,9 @@ public:
 
     // 字幕
     void setAsrEnabled(bool enabled);
+    void setModelPath(const QString& path);
     bool isAsrEnabled() const;
+
 
 
     // 获取信息
@@ -108,6 +111,7 @@ private:
     std::atomic<bool> is_exit_;       // 线程退出标志
     std::atomic<bool> is_seek_;       // Seek标志
     std::atomic<bool> need_screenshot_{false};
+    std::atomic<bool> screenshot_busy_{false};
     QMutex mutex_;
     QWaitCondition cond_;
 
@@ -138,16 +142,8 @@ private:
     AVSyncClock* sync_clock_ = nullptr;
 
     // 字幕
-    // std::unique_ptr<Resampler> asrResampler_;
-    // std::unique_ptr<AsrWorker> asrWorker_;
-    // AudioPcmRingBuffer asrRingBuffer_{160000, 16000}; // 10秒缓存
-    // bool asrEnabled_ = false;
-    // bool asrRunning_ = false;
-    // AVRational audioTimeBase_ {1, 1};
-    // SubtitleQueue* subtitle_queue_ = nullptr;
-    // SubtitleItem current_display_sub_;
     std::unique_ptr<AsrManager> asr_manager_;
-    QString model_path_ = "D:/Qt/ffmpegProjects/Smart_Player/dependencies/models/ggml-medium.bin";
+    QString model_path_;
     bool asrEnabled_ = false;
     SubtitleItem current_display_sub_;
 

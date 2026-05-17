@@ -25,6 +25,11 @@ PlayerCore::~PlayerCore()
 {
     stop();
 
+    delete audio_pkt_queue_; audio_pkt_queue_ = nullptr;
+    delete video_pkt_queue_; video_pkt_queue_ = nullptr;
+    delete audio_frame_queue_; audio_frame_queue_ = nullptr;
+    delete video_frame_queue_; video_frame_queue_ = nullptr;
+
     if (sync_clock_) {
         sync_clock_->reset();
         delete sync_clock_;
@@ -36,7 +41,7 @@ PlayerCore::~PlayerCore()
 
 void PlayerCore::open(const QString &url)
 {
-    if (!url.startsWith("rtsp://") && !url.startsWith("rtmp://"))
+    if (!url.startsWith("rtsp://") && !url.startsWith("rtmp://") && !url.startsWith("http://") && !url.startsWith("https://"))
     {
         stop();
         bool ret = openInternal(url);
@@ -118,8 +123,7 @@ bool PlayerCore::openInternal(const QString &url)
     state_ = Stopped;
 
     // 字幕
-    if (asrEnabled_ && hasAudio_) {
-        asr_manager_->setModelPath(model_path_);
+    if (asrEnabled_ && hasAudio_ && !asr_manager_->isModelPathEmpty()) {
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
         bool ok = asr_manager_->init(url, demuxer_->mediaType(), as);
         if(ok){
@@ -160,6 +164,7 @@ void PlayerCore::initAudioModule()
     audio_filter_ = new AudioFilter();
     if (audio_filter_->init(in_spec.sampleRate, in_spec.sampleFmt, in_spec.chs) < 0) {
         qDebug() << "音频倍速滤镜初始化失败";
+        delete audio_filter_; audio_filter_ = nullptr;
         return;
     }
 
@@ -167,6 +172,8 @@ void PlayerCore::initAudioModule()
     audio_output_ = new AudioOutput(in_spec, out_spec, audio_frame_queue_,sync_clock_);
     if (audio_output_->Init() < 0) {
         qDebug() << "SDL 音频输出初始化失败";
+        delete audio_filter_; audio_filter_ = nullptr;
+        delete audio_output_; audio_output_ = nullptr;
         return;
     }
 
@@ -206,6 +213,7 @@ void PlayerCore::initVideoModule()
     converter_ = new VideoConverter();
     if (converter_->init(in_spec, out_spec) < 0) {
         qDebug() << "视频转换器初始化失败";
+        delete converter_; converter_ = nullptr;
         return;
     }
 
@@ -429,16 +437,25 @@ void PlayerCore::setAsrEnabled(bool enabled)
     if(state_ == State::Stopped) return;
 
     if (enabled) {
-        asr_manager_->setModelPath(model_path_);
+        if(asr_manager_->isModelPathEmpty()) {
+            qDebug() << "model path is empty";
+            return;
+        }
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
-        bool ok = asr_manager_->init(file_url_, demuxer_->mediaType(), as);
-        if(ok){
+        if(asr_manager_->init(file_url_, demuxer_->mediaType(), as)){
             asr_manager_->start();
         }
     } else {
         asr_manager_->stop();
         emit subtitleReady("");
     }
+}
+
+void PlayerCore::setModelPath(const QString &path)
+{
+    if(path.isEmpty()) return;
+    model_path_ = path;
+    asr_manager_->setModelPath(model_path_);
 }
 
 bool PlayerCore::isAsrEnabled() const
@@ -779,12 +796,20 @@ void PlayerCore::videoRenderThreadFunc()
             continue;
         }
 
-        if (need_screenshot_) {
+        if (need_screenshot_ && !screenshot_busy_) {
             need_screenshot_ = false;
+            screenshot_busy_ = true;
 
-            QMetaObject::invokeMethod(this, [=]() {
-                this->saveFrameToImage(yuv_data, w, h, fmt);
-            }, Qt::QueuedConnection);
+            QByteArray frame_copy = yuv_data;
+            int w_copy = w;
+            int h_copy = h;
+            AVPixelFormat fmt_copy = fmt;
+            QString path_copy = screenshot_save_path_;
+
+            QtConcurrent::run([=]() {
+                this->saveFrameToImage(frame_copy, w_copy, h_copy, fmt_copy, path_copy);
+                screenshot_busy_ = false;
+            });
         }
 
         emit timeChanged();
@@ -795,16 +820,16 @@ void PlayerCore::videoRenderThreadFunc()
 }
 
 
-void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format)
+void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format, const QString& savePath)
 {
     if(frame_data.isEmpty() || width <=0 || height <=0)
         return;
 
     // 保存路径
     QString saveDir;
-    if (!screenshot_save_path_.isEmpty())
+    if (!savePath.isEmpty())
     {
-        saveDir = screenshot_save_path_;
+        saveDir = savePath;
     }
     else
     {
@@ -816,13 +841,17 @@ void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int h
     QDir dir(saveDir);
     if (!dir.exists()) dir.mkpath(saveDir);
 
-    QString fileName = QString("screenshot_%1.png").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd_hhmmss"));
+    QString fileName = QString("screenshot_%1.jpg").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd_hhmmss"));
     QString fullPath = dir.filePath(fileName);
 
     // 格式转换
     uint8_t* rgb_buf[4] = {nullptr};
     int rgb_linesize[4] = {0};
-    av_image_alloc(rgb_buf, rgb_linesize, width, height, AV_PIX_FMT_RGB24, 1);
+    int allocResult = av_image_alloc(rgb_buf, rgb_linesize, width, height, AV_PIX_FMT_RGB24, 1);
+    if (allocResult < 0) {
+        qWarning() << "av_image_alloc failed for screenshot";
+        return;
+    }
 
     SwsContext* sws_ctx = sws_getContext(
         width, height, format,
@@ -849,7 +878,7 @@ void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int h
     sws_scale(sws_ctx, src_data, src_linesize, 0, height, rgb_buf, rgb_linesize);
 
     QImage img(rgb_buf[0], width, height, rgb_linesize[0], QImage::Format_RGB888);
-    bool ok = img.save(fullPath);
+    bool ok = img.save(fullPath, "JPG", 95);
     if(ok){
         qDebug() << "截图保存成功：" << fullPath;
         emit screecshotStatus(fullPath,true);
@@ -861,6 +890,9 @@ void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int h
 
     sws_freeContext(sws_ctx);
     av_freep(&rgb_buf[0]);
+    av_freep(&rgb_buf[1]);
+    av_freep(&rgb_buf[2]);
+    av_freep(&rgb_buf[3]);
 }
 
 double PlayerCore::getSpeedFromIndex(int speedIndex)

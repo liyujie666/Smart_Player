@@ -2,7 +2,7 @@
 #define VIDEOINFODIALOG_H
 
 #include <QDialog>
-extern"C"{
+extern "C" {
 #include <libavformat/avformat.h>
 }
 

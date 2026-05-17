@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <algorithm>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QInputDialog>
 #include <thread>
 #include <time.h>
@@ -12,6 +14,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QMovie>
+#include <QTimer>
 #include <QtConcurrent>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -40,9 +43,15 @@ MainWindow::MainWindow(QWidget *parent)
     preview_player_ = new PreviewPlayer();
 
     //加载曾经播放过的文件
-    //loadFile();
+    ConfigManager::instance().load();
+    loadVideoList();
 
-    listIndex = 0;
+    saveDebounceTimer_.setSingleShot(true);
+    connect(&saveDebounceTimer_, &QTimer::timeout, this, &MainWindow::onSaveDebounceTimeout);
+    thumbLazyTimer_.setSingleShot(true);
+    thumbLazyTimer_.setInterval(50);
+    connect(&thumbLazyTimer_, &QTimer::timeout, this, &MainWindow::onThumbBatchTimeout);
+
     setFocusPolicy(Qt::StrongFocus); //获取键盘监听
     ui->speedLabel->setVisible(false);
     ui->infoLabel->hide();
@@ -54,7 +63,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(player_,&PlayerCore::initFinished,this,&MainWindow::onPlayerInitFinished); //初始化播放器参数
     connect(player_,&PlayerCore::playFailed,this,&MainWindow::onPlayerPlayFailed); //播放出错
     connect(player_,&PlayerCore::screecshotStatus,this,&MainWindow::on_screenshotStatus);
-    connect(player_, &PlayerCore::playFinished, this, [this]() {player_->stop();});
+    connect(player_, &PlayerCore::playFinished, this, &MainWindow::on_playFinished);
     connect(player_,&PlayerCore::frameYuv420pDecoded,this,&MainWindow::on_frameYuv420pDecoded);//视频渲染
     connect(player_,&PlayerCore::frameNv12Decoded,this,&MainWindow::on_frameNv12Decoded);//视频渲染
     connect(player_,&PlayerCore::frameRGBADecoded,this,&MainWindow::on_frameRGBADecoded);//视频渲染
@@ -83,6 +92,8 @@ MainWindow::MainWindow(QWidget *parent)
         float s = value / 100.0f;
         ui->videoWidget->setSaturation(s);
     });
+
+    connect(settingdialog, &settingDialog::updateModelPath, this, &MainWindow::on_modelPathChanged);
 
     //音量设置
     ui->volumeSlider->setRange(0, 100);
@@ -267,6 +278,7 @@ void MainWindow::on_openFileBtn_clicked()
                                                     "多媒体文件(*.mp4 *.avi *.mkv *.mp3 *.aac *.mov *.ts)");
     if(filePath == nullptr) return;
     addToFileList(filePath);
+    scheduleSave();
     play(filePath);
 
     //隐藏播放列表时继续导入文件夹，则导入后打开播放列表
@@ -304,6 +316,56 @@ void MainWindow::on_stopBtn_clicked()
     player_->stop();
     preview_player_->stop();
     previewContainer_->hide();
+}
+
+
+void MainWindow::on_playFinished()
+{
+    if (playFinished_busy_.exchange(true)) return;
+
+    if (fileList.isEmpty()) {
+        playFinished_busy_ = false;
+        player_->stop();
+        return;
+    }
+    if (listIndex < 0 || listIndex >= fileList.size()) {
+        listIndex = 0;
+    }
+    ConfigManager::instance().updateVideoPosition(fileList[listIndex], player_->getCurrentPos());
+    switch (playMode_) {
+    case PlayMode::ListLoop: {
+        int next = listIndex + 1;
+        if (next >= fileList.count()) next = 0;
+        listIndex = next;
+        ui->fileList->setCurrentRow(listIndex);
+        play(fileList.at(listIndex));
+        break;
+    }
+    case PlayMode::SingleRepeat:
+        ui->fileList->setCurrentRow(listIndex);
+        play(fileList.at(listIndex));
+        break;
+    case PlayMode::Shuffle: {
+        if (shuffledList_.isEmpty()) {
+            playFinished_busy_ = false;
+            player_->stop();
+            return;
+        }
+        static int shuffleIdx = 0;
+        shuffleIdx++;
+        if (shuffleIdx >= shuffledList_.count()) {
+            shuffleIdx = 0;
+            std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+        }
+        int idx = fileList.indexOf(shuffledList_.at(shuffleIdx));
+        if (idx >= 0) listIndex = idx;
+        ui->fileList->setCurrentRow(listIndex);
+        play(fileList.at(listIndex));
+        break;
+    }
+    }
+
+    playFinished_busy_ = false;
 }
 
 
@@ -354,6 +416,32 @@ void MainWindow::on_nextVideoBtn_clicked()
     }
     ui->fileList->setCurrentRow(listIndex);
     play(fileList[listIndex]);
+}
+
+
+void MainWindow::on_switchPlayModeBtn_clicked()
+{
+    switch (playMode_) {
+    case PlayMode::ListLoop:
+        playMode_ = PlayMode::SingleRepeat;
+        ui->switchPlayModeBtn->setIcon(QIcon(":/SmartPlayer-icon/single_circle.png"));
+        ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("单曲循环"));
+        break;
+    case PlayMode::SingleRepeat:
+        playMode_ = PlayMode::Shuffle;
+        ui->switchPlayModeBtn->setIcon(QIcon(":/SmartPlayer-icon/random_circle.png"));
+        ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("随机播放"));
+        if (!fileList.isEmpty()) {
+            shuffledList_ = fileList;
+            std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+        }
+        break;
+    case PlayMode::Shuffle:
+        playMode_ = PlayMode::ListLoop;
+        ui->switchPlayModeBtn->setIcon(QIcon(":/SmartPlayer-icon/list_circle.png"));
+        ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("列表循环"));
+        break;
+    }
 }
 
 
@@ -414,6 +502,7 @@ void MainWindow::on_addFileBtn_clicked()
                                                     );
     if(filePath==nullptr) return;//没有成功打开文件
     addToFileList(filePath);
+    scheduleSave();
     if(listIndex == 0){
         play(filePath);
     }
@@ -436,8 +525,9 @@ void MainWindow::on_addDirBtn_clicked()
     QList fileInfo = dir->entryInfoList(QDir::Files | QDir::CaseSensitive);//过滤条件为只限文件并区分大小写
     for(int i=0;i < fileInfo.count();i++){
         if(!fileList.contains(fileInfo.at(i).absoluteFilePath())){  //不与已有文件重复的情况下
-
-            VideoItemWidget *itemWidget = new VideoItemWidget(picture_->getPreViewImage(fileInfo.at(i).absoluteFilePath(),110,65), fileInfo.at(i).fileName(), getTimeText(picture_->getDuration()));
+            int dur = picture_->getDuration(fileInfo.at(i).absoluteFilePath());
+            fileDurationList.append(dur);
+            VideoItemWidget *itemWidget = new VideoItemWidget(picture_->getPreViewImage(fileInfo.at(i).absoluteFilePath(),110,65), fileInfo.at(i).fileName(), getTimeText(dur));
             QListWidgetItem *item = new QListWidgetItem(ui->fileList);
 
             item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
@@ -453,6 +543,7 @@ void MainWindow::on_addDirBtn_clicked()
             fileList.append(fileInfo.at(i).absoluteFilePath());
         }
     }
+    scheduleSave();
     delete dir;
 }
 
@@ -461,6 +552,7 @@ void MainWindow::on_clearListBtn_clicked()
 {
     ui->fileList->clear();
     fileList.clear();
+    fileDurationList.clear();
 }
 
 
@@ -773,6 +865,7 @@ void MainWindow::openVideoFromCommand(const QString &filePath)
 {
     if(!filePath.isEmpty()){
         addToFileList(filePath);
+        scheduleSave();
         play(filePath);
     }
 }
@@ -782,8 +875,10 @@ void MainWindow::addToFileList(QString filePath)
     if(!fileList.contains(filePath)){  //判断视频列表是否有当前视频文件
         QFileInfo temp(filePath);
         //qDebug() << picture_->getDuration();
+        int dur = picture_->getDuration(filePath);
+        fileDurationList.append(dur);
         QImage image = picture_->getPreViewImage(filePath,110,65);
-        VideoItemWidget *itemWidget = new VideoItemWidget(image, temp.fileName(), getTimeText(picture_->getDuration()));
+        VideoItemWidget *itemWidget = new VideoItemWidget(image, temp.fileName(), getTimeText(dur));
         QListWidgetItem *item = new QListWidgetItem(ui->fileList);
 
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
@@ -801,15 +896,12 @@ void MainWindow::addToFileList(QString filePath)
     }
 
     ui->fileList->update();
-    //设置当前播放文件的索引
     for(int i =0;i < fileList.size();i++){
         if(filePath == fileList[i]){
             listIndex = i;
         }
     }
-    if(listIndex == 0){
-        ui->fileList->setCurrentRow(listIndex);
-    }
+    ui->fileList->setCurrentRow(listIndex);
 }
 
 void MainWindow::play(QString filePath)
@@ -858,12 +950,16 @@ void MainWindow::on_fileList_itemDoubleClicked(QListWidgetItem *item)
 
     QString fileAbsolutePath = item->data(Qt::UserRole).toString();
 
+    ConfigManager& cfg = ConfigManager::instance();
     for(int i=0;i<fileList.count();i++)
     {
         if(fileAbsolutePath == fileList[i]){
             listIndex = i;
+            cfg.setCurrentIndex(listIndex);
+            cfg.save();
         }
     }
+
     play(fileList[listIndex]);
 }
 
@@ -974,7 +1070,157 @@ void MainWindow::on_change_userDecoder(QString decoder)
 
         play(fileList[listIndex]);
     }
+}
 
+void MainWindow::on_modelPathChanged(const QString& path)
+{
+    player_->setModelPath(path);
+}
+
+void MainWindow::saveAllSettings()
+{
+    ConfigManager& cfg = ConfigManager::instance();
+    cfg.setPlayMode(playMode_);
+
+    QList<ConfigManager::VideoItem> items;
+    for (int i = 0; i < fileList.size(); ++i) {
+        ConfigManager::VideoItem item;
+        item.path = fileList[i];
+        item.name = QFileInfo(fileList[i]).fileName();
+        item.duration = (i < fileDurationList.size()) ? fileDurationList[i] : 0;
+        item.thumbnail = cfg.thumbnailPathForVideo(fileList[i]);
+        items.append(item);
+    }
+    cfg.setVideoList(items);
+    cfg.setCurrentIndex(listIndex);
+    cfg.save();
+}
+
+void MainWindow::onSaveDebounceTimeout()
+{
+    saveAllSettings();
+}
+
+void MainWindow::scheduleSave()
+{
+    if (!saveDebounceTimer_.isActive()) {
+        saveDebounceTimer_.setInterval(1000);
+        saveDebounceTimer_.start();
+    } else {
+        saveDebounceTimer_.setInterval(saveDebounceTimer_.remainingTime() + 1000);
+    }
+}
+
+void MainWindow::onThumbBatchTimeout()
+{
+    const int BATCH = 3;
+    ConfigManager& cfg = ConfigManager::instance();
+    for (int i = 0; i < BATCH && thumbLoadStartIdx_ < ui->fileList->count(); ++i, ++thumbLoadStartIdx_) {
+        QListWidgetItem* item = ui->fileList->item(thumbLoadStartIdx_);
+        QString path = item->data(Qt::UserRole).toString();
+        if (path.isEmpty()) continue;
+        if (auto* widget = qobject_cast<VideoItemWidget*>(ui->fileList->itemWidget(item))) {
+            QString thumbPath = cfg.thumbnailPathForVideo(path);
+            QImage thumb;
+            if (QFileInfo::exists(thumbPath)) {
+                thumb.load(thumbPath);
+            } else {
+                thumb = picture_->getPreViewImage(path, 110, 65);
+                if (!thumb.isNull()) thumb.save(thumbPath);
+            }
+            widget->updateThumbnail(thumb);
+        }
+    }
+    if (thumbLoadStartIdx_ < ui->fileList->count()) {
+        thumbLazyTimer_.start();
+    }
+}
+
+void MainWindow::onThumbLoaded(const QString& path, const QImage& thumb)
+{
+    QListWidgetItem* item = findItemByPath(path);
+    if (!item) return;
+    if (auto* widget = qobject_cast<VideoItemWidget*>(ui->fileList->itemWidget(item))) {
+        widget->updateThumbnail(thumb);
+    }
+}
+
+void MainWindow::loadVideoList()
+{
+    ConfigManager& cfg = ConfigManager::instance();
+    QList<ConfigManager::VideoItem> items = cfg.getVideoList();
+    if (items.isEmpty()) return;
+
+    thumbLoadStartIdx_ = 0;
+    thumbLazyTimer_.stop();
+
+    for (const ConfigManager::VideoItem& item : items) {
+        if (!QFileInfo::exists(item.path)) continue;
+
+        QFileInfo temp(item.path);
+        QImage image;
+        if (!item.thumbnail.isEmpty() && QFileInfo::exists(item.thumbnail)) {
+            image.load(item.thumbnail);
+        } else {
+            image = QImage(110, 65, QImage::Format_ARGB32);
+            image.fill(Qt::darkGray);
+        }
+        VideoItemWidget *itemWidget = new VideoItemWidget(
+            image, temp.fileName(),
+            getTimeText(item.duration > 0 ? item.duration : picture_->getDuration(item.path)));
+        QListWidgetItem *listItem = new QListWidgetItem(ui->fileList);
+        listItem->setFlags(listItem->flags() & ~Qt::ItemIsSelectable);
+        listItem->setBackground(Qt::transparent);
+        listItem->setSizeHint(itemWidget->sizeHint());
+        listItem->setData(Qt::UserRole, temp.absoluteFilePath());
+        ui->fileList->addItem(listItem);
+        ui->fileList->setItemWidget(listItem, itemWidget);
+        fileList.append(item.path);
+        fileDurationList.append(item.duration);
+    }
+
+    if (thumbLoadStartIdx_ < ui->fileList->count()) {
+        thumbLazyTimer_.start();
+    }
+
+    int savedIndex = cfg.getCurrentIndex();
+    qDebug() << "index " << savedIndex;
+    if (savedIndex >= 0 && savedIndex < fileList.size()) {
+        listIndex = savedIndex;
+        ui->fileList->setCurrentRow(listIndex);
+    }
+
+    PlayMode mode = cfg.getPlayMode();
+    switch (mode) {
+    case PlayMode::SingleRepeat:
+        playMode_ = PlayMode::SingleRepeat;
+        ui->switchPlayModeBtn->setIcon(QIcon(":/SmartPlayer-icon/single_circle.png"));
+        ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("单曲循环"));
+        break;
+    case PlayMode::Shuffle:
+        playMode_ = PlayMode::Shuffle;
+        ui->switchPlayModeBtn->setIcon(QIcon(":/SmartPlayer-icon/random_circle.png"));
+        ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("随机播放"));
+        if (!fileList.isEmpty()) {
+            shuffledList_ = fileList;
+            std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+        }
+        break;
+    default:
+        playMode_ = PlayMode::ListLoop;
+        ui->switchPlayModeBtn->setIcon(QIcon(":/SmartPlayer-icon/list_circle.png"));
+        ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("列表循环"));
+        break;
+    }
+}
+
+QListWidgetItem* MainWindow::findItemByPath(const QString& path)
+{
+    for (int i = 0; i < ui->fileList->count(); ++i) {
+        QListWidgetItem* item = ui->fileList->item(i);
+        if (item->data(Qt::UserRole).toString() == path) return item;
+    }
+    return nullptr;
 }
 
 void MainWindow::initPreviewWindow()
@@ -1088,6 +1334,9 @@ void MainWindow::on_fileList_currentItemChanged(QListWidgetItem *current, QListW
     }
 
     if (current) {
+        int newIndex = ui->fileList->row(current);
+        listIndex = newIndex;
+
         QWidget *currWidget = ui->fileList->itemWidget(current);
         if (auto videoItem = qobject_cast<VideoItemWidget *>(currWidget)) {
             videoItem->setFileNameTextColor(QColor(232, 88, 158)); // 设置为选中颜色
@@ -1206,4 +1455,6 @@ void MainWindow::on_subtitleBtn_clicked()
     subtitlePopup_->move(popupX, popupY);
     subtitlePopup_->show();
 }
+
+
 

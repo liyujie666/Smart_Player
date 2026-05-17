@@ -69,6 +69,12 @@ void PreviewPlayer::decode(int64_t seekTimeSec)
 
     AVFrame*  frame   = av_frame_alloc();
     AVPacket* pkt     = av_packet_alloc();
+    if (!frame || !pkt) {
+        qCritical() << "PreviewPlayer: FFmpeg allocation failed";
+        if (frame) av_frame_free(&frame);
+        if (pkt) av_packet_free(&pkt);
+        return;
+    }
     QByteArray outData;
     int outW = 0, outH = 0;
     AVPixelFormat outFmt = AV_PIX_FMT_NONE;

@@ -64,6 +64,15 @@ int Decoder::init(AVCodecParameters *codecpar, AVMediaType type, const QString &
         if (ret < 0) {
             useHardware_.store(false);
             avcodec_free_context(&codecCtx_);
+            // Clean up hardware context before recursive init to avoid leak
+            if (hwDeviceCtx_) {
+                av_buffer_unref(&hwDeviceCtx_);
+                hwDeviceCtx_ = nullptr;
+            }
+            if (hwTmpFrame_) {
+                av_frame_free(&hwTmpFrame_);
+                hwTmpFrame_ = nullptr;
+            }
             return init(codecpar, type, decodeName);
         } else {
             codecCtx_->get_format = Decoder::hwPixFmtCallback;

@@ -17,6 +17,7 @@ public:
     ~VideoItemWidget();
 
     void setFileNameTextColor(const QColor &color);
+    void updateThumbnail(const QImage &preview);
 protected:
     void enterEvent(QEnterEvent *event) override;
     void leaveEvent(QEvent *event) override;

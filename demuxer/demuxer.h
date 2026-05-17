@@ -21,7 +21,10 @@ public:
     enum class MediaType {
         FILE_TYPE,
         RTSP_TYPE,
-        RTMP_TYPE
+        RTMP_TYPE,
+        HTTP_TYPE,    // 新增
+        HTTPS_TYPE,   // 新增
+        HLS_TYPE      // 新增
     };
 
     explicit Demuxer(QObject *parent = nullptr);

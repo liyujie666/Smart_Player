@@ -55,7 +55,7 @@ private:
     AVFrame *hwTmpFrame_ = nullptr;  // 硬解中转帧
 
     std::atomic<bool> isOpened_{false};
-    std::atomic<bool> useHardware_{false};
+    std::atomic<bool> useHardware_{true};
     mutable QReadWriteLock lock_;
 };
 

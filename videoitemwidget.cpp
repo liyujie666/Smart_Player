@@ -40,3 +40,8 @@ void VideoItemWidget::leaveEvent(QEvent *event)
     this->setStyleSheet("");  // 恢复默认样式
     QWidget::leaveEvent(event);
 }
+
+void VideoItemWidget::updateThumbnail(const QImage &preview)
+{
+    ui->previewImageLabel->setPixmap(QPixmap::fromImage(preview).scaled(110, 65, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}

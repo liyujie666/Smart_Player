@@ -21,6 +21,7 @@ public:
     int getBrightness() const;
     QString getVideoSizeForm() const;
     QString getSavePath() const;
+    QString getModelPath() const;
 
 
 private slots:
@@ -31,6 +32,11 @@ private slots:
     void on_lightSlider_valueChanged(int value);
     void on_contrastSlider_valueChanged(int value);
     void on_baoheSlider_valueChanged(int value);
+    void on_uploadModelPathBtn_clicked();
+    void on_cancelBtn_clicked();
+    void on_confirmBtn_clicked();
+
+    void on_resetConfigBtn_clicked();
 
 signals:
     void startHardWareAccep(bool on);
@@ -41,8 +47,16 @@ signals:
     void brightnessValueChanged(int value);
     void contrastValueChanged(int value);
     void saturationValueChanged(int value);
+    void updateModelPath(const QString& path);
 private:
     Ui::settingDialog *ui;
+    bool originalHardware_;
+    int originalSizeMode_;
+    int originalBrightness_;
+    int originalContrast_;
+    int originalSaturation_;
+    QString originalScreenshotPath_;
+    QString originalModelPath_;
 };
 
 #endif // SETTINGDIALOG_H

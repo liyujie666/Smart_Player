@@ -610,6 +610,34 @@ border-radius:5px;
           </spacer>
          </item>
          <item>
+          <widget class="QPushButton" name="switchPlayModeBtn">
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/list_circle.png</normaloff>:/SmartPlayer-icon/list_circle.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>26</width>
+             <height>26</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
           <widget class="QPushButton" name="preVideoBtn">
            <property name="cursor">
             <cursorShape>PointingHandCursor</cursorShape>
@@ -1101,7 +1129,7 @@ border-radius:5px;
   <customwidget>
    <class>OpenGLRenderer</class>
    <extends>QOpenGLWidget</extends>
-   <header>openglrenderer.h</header>
+   <header>render/openglrenderer.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>

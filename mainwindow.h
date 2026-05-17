@@ -11,6 +11,7 @@
 #include "utils/picturecreator.h"
 #include "videoitemwidget.h"
 #include "subtitlepopup.h"
+#include "configmanager.h"
 #include <QMainWindow>
 #include <qlistwidget.h>
 #include <QVector>
@@ -81,6 +82,7 @@ private slots:
     void on_change_userDecoder(QString decoder);                    //切换用户指定解码器
     void on_show_message_info(QString info,int interval);           //显示提示消息
     void on_fileList_currentItemChanged(QListWidgetItem *current, QListWidgetItem *previous);
+    void on_playFinished();
 
     void on_frameYuv420pDecoded(const QByteArray &data, int width, int height);
     void on_frameNv12Decoded(const QByteArray &data, int width, int height);
@@ -98,6 +100,18 @@ private slots:
 
     void on_subtitleBtn_clicked();
 
+    void on_switchPlayModeBtn_clicked();
+
+    void on_modelPathChanged(const QString& path);
+    void saveAllSettings();
+    void loadVideoList();
+    void scheduleSave();
+
+private slots:
+    void onSaveDebounceTimeout();
+    void onThumbBatchTimeout();
+    void onThumbLoaded(const QString& path, const QImage& thumb);
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -106,6 +120,7 @@ private:
     void initControlbarPresent();
     void initComponent();
     QString getTimeText(int64_t value);
+    QListWidgetItem* findItemByPath(const QString& path);
     void mousePressEvent(QMouseEvent *event) override;//获取视频信息
     void mouseDoubleClickEvent(QMouseEvent *event) override;//鼠标双击全屏
     void keyPressEvent(QKeyEvent * event) override;//快捷键
@@ -133,19 +148,26 @@ private:
 
 
     QVector<QString> fileList;//文件列表
+    QVector<int> fileDurationList; // parallel to fileList, seconds
     int listIndex;//当前播放文件在播放列表中位置
+    QVector<QString> shuffledList_;
+    std::atomic<bool> playFinished_busy_{false};
     QTimer timer; // 定时器
     bool isLongPress = false; // 是否长按
     bool is_seeking = false;
 
 
     QTimer *hideCursorTimer;       // 3秒定时隐藏
+    QTimer saveDebounceTimer_;      // 防抖保存定时器
+    QTimer thumbLazyTimer_;         // 延迟加载缩略图批次
+    int thumbLoadStartIdx_ = 0;     // 缩略图延迟加载起始索引
     bool isFullScreenMode;         // 全屏标记
     QString originalControlBarStyle;// 保存控制栏原始样式
     bool m_isMouseOverControlBar = false;
 
     // 加载动画
     QLabel* loadingLabel_ = nullptr;
+    PlayMode playMode_ = PlayMode::ListLoop;
 
 
 };

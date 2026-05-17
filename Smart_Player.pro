@@ -11,6 +11,7 @@ CONFIG += c++17
 #DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000    # disables all the APIs deprecated before Qt 6.0.0
 
 SOURCES += \
+    configmanager.cpp \
     subtitle/asrmanager.cpp \
     subtitle/asrofflinestrategy.cpp \
     subtitle/asrrealtimestrategy.cpp \
@@ -42,6 +43,7 @@ SOURCES += \
     playercore.cpp \
 
 HEADERS += \
+    configmanager.h \
     subtitle/asrmanager.h \
     subtitle/asrofflinestrategy.h \
     subtitle/asrrealtimestrategy.h \
@@ -72,7 +74,7 @@ HEADERS += \
     filter/audiofilter.h \
     converter/videoconverter.h \
     pool/framepool.h \
-    pool/gloabalpool.h \
+    pool/globalpool.h \
     pool/packetpool.h \
     playercore.h \
 

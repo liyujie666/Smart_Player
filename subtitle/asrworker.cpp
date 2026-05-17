@@ -71,5 +71,5 @@ bool AsrWorker::recognize(const std::vector<float> &pcm, std::vector<SubtitleIte
 
 void AsrWorker::reset()
 {
-
+    //if (ctx_) whisper_full_reset(ctx_);
 }

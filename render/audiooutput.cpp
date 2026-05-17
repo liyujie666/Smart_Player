@@ -213,7 +213,10 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
             }
 
             audio_buf_index_ = 0;
-            audio_clock_us_ = av_rescale_q(frame->pts,audio_timebase_, {1, 1000000});
+            {
+                QMutexLocker locker(&mutex_);
+                audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
+            }
             sync_clock_->set_audio_clock(audio_clock_us_);
 
 

@@ -26,9 +26,15 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         // 1. 打开MP3文件
         if (avformat_open_input(&fmtCtx, videoPath.toStdString().c_str(), nullptr, nullptr) != 0) {
             duration_ = 0;
+            av_frame_free(&frame);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
-        avformat_find_stream_info(fmtCtx, nullptr);
+        if (avformat_find_stream_info(fmtCtx, nullptr) < 0) {
+            avformat_close_input(&fmtCtx);
+            av_frame_free(&frame);
+            duration_ = 0;
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
         duration_ = fmtCtx->duration * av_q2d(AV_TIME_BASE_Q);
 
         // 2. 查找【专辑封面流】(附加图片流 attached_pic)
@@ -45,6 +51,7 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         // 3. 未找到封面 → 返回默认音频图标
         if (coverStreamIdx == -1) {
             avformat_close_input(&fmtCtx);
+            av_frame_free(&frame);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
 
@@ -53,14 +60,23 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         codec = avcodec_find_decoder(codecParams->codec_id);
         if (!codec) {
             avformat_close_input(&fmtCtx);
+            av_frame_free(&frame);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
 
         codecCtx = avcodec_alloc_context3(codec);
-        avcodec_parameters_to_context(codecCtx, codecParams);
-        if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
+        if (!codecCtx) {
             avformat_close_input(&fmtCtx);
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+        if (avcodec_parameters_to_context(codecCtx, codecParams) < 0) {
             avcodec_free_context(&codecCtx);
+            avformat_close_input(&fmtCtx);
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+        if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
+            avcodec_free_context(&codecCtx);
+            avformat_close_input(&fmtCtx);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
 
@@ -71,7 +87,13 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
                 previewImage = convertFrameToQImage(frame, maxWidth, maxHeight);
             }
         }
-
+        // Clean up codec context since we return early from this block
+        avcodec_free_context(&codecCtx);
+        avformat_close_input(&fmtCtx);
+        if (previewImage.isNull()) {
+            return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
+        }
+        return previewImage;
     }
     else if(type == "FILE")
     {
@@ -110,7 +132,14 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         }
 
         codecCtx = avcodec_alloc_context3(codec);
-        avcodec_parameters_to_context(codecCtx, codecParams);
+        if (!codecCtx) {
+            qWarning() << "Failed to allocate codec context";
+            goto cleanup;
+        }
+        if (avcodec_parameters_to_context(codecCtx, codecParams) < 0) {
+            qWarning() << "Failed to copy codec parameters";
+            goto cleanup;
+        }
         if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
             qWarning() << "Failed to open codec";
             goto cleanup;
@@ -131,9 +160,11 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         }
     }else if(type == "RTSP"){
         duration_ = 0;
+        av_frame_free(&frame);
         return QImage(":/SmartPlayer-icon/image_rtsp.png");
     }else if(type == "RTMP"){
         duration_ = 0;
+        av_frame_free(&frame);
         return QImage(":/SmartPlayer-icon/image_rtmp.png");
     }
 
@@ -187,6 +218,21 @@ QImage PictureCreator::convertFrameToQImage(AVFrame *frame, int maxWidth, int ma
 int PictureCreator::getDuration()
 {
     return duration_;
+}
+
+int PictureCreator::getDuration(const QString &videoPath)
+{
+    AVFormatContext *fmtCtx = nullptr;
+    if (avformat_open_input(&fmtCtx, videoPath.toStdString().c_str(), nullptr, nullptr) < 0) {
+        return 0;
+    }
+    if (avformat_find_stream_info(fmtCtx, nullptr) < 0) {
+        avformat_close_input(&fmtCtx);
+        return 0;
+    }
+    int durationSec = fmtCtx->duration * av_q2d(AV_TIME_BASE_Q);
+    avformat_close_input(&fmtCtx);
+    return durationSec;
 }
 
 QString PictureCreator::getFileType(const QString &videoPath)

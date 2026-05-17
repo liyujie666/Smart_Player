@@ -45,11 +45,11 @@ int Resampler::init(const AudioSpec &inSpec, const AudioSpec &outSpec)
     }
 
     int ret = swr_init(swrCtx_);
-    CODE(swr_init, {
+    if (ret < 0) {
         swr_free(&swrCtx_);
         swrCtx_ = nullptr;
         return ret;
-    });
+    }
 
     isInitialized_ = true;
     return 0;
@@ -137,6 +137,7 @@ int Resampler::getOutputBufferSize(int samples) const
 void Resampler::initChannelLayout(AVChannelLayout *chLayout, int chs)
 {
     if (!chLayout) return;
+    av_channel_layout_uninit(chLayout);
 
     switch (chs) {
     case 1:

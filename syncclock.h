@@ -81,6 +81,7 @@ public:
     }
     // 设置音频时钟
     void set_audio_clock(int64_t clock) {
+        QMutexLocker locker(&m_mutex);
         m_audio_clock = clock;
     }
 
@@ -178,8 +179,8 @@ public:
         return valid_time;
     }
 
-    int64_t get_diff() const { return m_last_pts - m_audio_clock; }
-    int64_t get_audio_clock() const { return m_audio_clock; }
+    int64_t get_diff() const { QMutexLocker locker(&m_mutex); return m_last_pts - m_audio_clock; }
+    int64_t get_audio_clock() const { QMutexLocker locker(&m_mutex); return m_audio_clock; }
     int64_t get_last_pts() const { return m_last_pts; }
     double get_speed() const { return m_speed;}
 

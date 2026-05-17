@@ -19,8 +19,9 @@ public:
     void reset();
     void sendAudioFrame(AVFrame* frame);
     SubtitleQueue* queue() { return &queue_; }
-    void setModelPath(const QString& path) { model_path_ = path; }
 
+    void setModelPath(const QString& path) { model_path_ = path; }
+    bool isModelPathEmpty() const { return model_path_.isEmpty(); }
 private:
     void switchMode(Demuxer::MediaType type);
 
