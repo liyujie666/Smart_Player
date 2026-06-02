@@ -591,7 +591,8 @@ void PlayerCore::audioDecodeThreadFunc()
 
 
         int64_t pts = (decoded_frame->pts == AV_NOPTS_VALUE) ? NAN : decoded_frame->pts;
-        double duration = av_q2d((AVRational) { decoded_frame->nb_samples, decoded_frame->sample_rate });
+        //double duration = av_q2d((AVRational) { decoded_frame->nb_samples, decoded_frame->sample_rate });
+        double duration = av_q2d(AVRational{ decoded_frame->nb_samples, decoded_frame->sample_rate });
         // sendFrameToAsr(decoded_frame);
         asr_manager_->sendAudioFrame(decoded_frame);
         // 倍速滤镜处理

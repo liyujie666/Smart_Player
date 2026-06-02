@@ -26,7 +26,8 @@
    <string>Dialog</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QDialog { color: black; }</string>
+   <string notr="true">QDialog { color: black;background:black; }
+</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>

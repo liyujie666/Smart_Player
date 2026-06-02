@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <algorithm>
+#include <random>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QInputDialog>
@@ -16,6 +17,8 @@
 #include <QMovie>
 #include <QTimer>
 #include <QtConcurrent>
+#include <QDockWidget>
+#include <QAction>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -56,9 +59,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui->speedLabel->setVisible(false);
     ui->infoLabel->hide();
 
+    setupSummaryPanel();
+
     connect(&timer,&QTimer::timeout,this,&MainWindow::onLongPressTimeout);   //右方向键长按倍速播放
-    connect(player_,&PlayerCore::openResult,this,&MainWindow::onPlayerOpenResult);//视频渲染
-    connect(player_,&PlayerCore::stateChanged,this,&MainWindow::onPlayerStateChanged); //播放器状态转换
+    connect(player_, &PlayerCore::openResult,this,&MainWindow::onPlayerOpenResult);//视频渲染
+    connect(player_, &PlayerCore::stateChanged,this,&MainWindow::onPlayerStateChanged); //播放器状态转换
     connect(player_,&PlayerCore::timeChanged,this,&MainWindow::onPlayerTimeChanged); //更新当前播放时间
     connect(player_,&PlayerCore::initFinished,this,&MainWindow::onPlayerInitFinished); //初始化播放器参数
     connect(player_,&PlayerCore::playFailed,this,&MainWindow::onPlayerPlayFailed); //播放出错
@@ -209,6 +214,10 @@ void MainWindow::onPlayerOpenResult(bool result)
         player_->play();
         ui->videoWidget->start();
         ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::Video);
+
+        if (m_summaryPanel) {
+            m_summaryPanel->setVideoPath(player_->getFileUrl());
+        }
         // mp3渲染专辑封面
         if (!player_->hasVideo()) {
             ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::Cover);
@@ -355,7 +364,8 @@ void MainWindow::on_playFinished()
         shuffleIdx++;
         if (shuffleIdx >= shuffledList_.count()) {
             shuffleIdx = 0;
-            std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+            //std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+            std::shuffle(shuffledList_.begin(), shuffledList_.end(), std::mt19937(std::random_device{}()));
         }
         int idx = fileList.indexOf(shuffledList_.at(shuffleIdx));
         if (idx >= 0) listIndex = idx;
@@ -433,7 +443,8 @@ void MainWindow::on_switchPlayModeBtn_clicked()
         ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("随机播放"));
         if (!fileList.isEmpty()) {
             shuffledList_ = fileList;
-            std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+            //std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+            std::shuffle(shuffledList_.begin(), shuffledList_.end(), std::mt19937(std::random_device{}()));
         }
         break;
     case PlayMode::Shuffle:
@@ -911,6 +922,9 @@ void MainWindow::play(QString filePath)
         loadingLabel_->show();
         ui->logoBtn->hide();
     }
+    if (m_summaryPanel) {
+        m_summaryPanel->setVideoPath(filePath);
+    }
     player_->open(filePath);
 }
 
@@ -971,6 +985,9 @@ void MainWindow::on_rtspButton_clicked()
     dialog.setWindowTitle("请输入网络流地址");
     dialog.setLabelText("地址：");
     dialog.setStyleSheet(R"(
+        QDialog{
+            background-color: black;
+        }
         QLabel {
             color: white;
         }
@@ -1203,7 +1220,8 @@ void MainWindow::loadVideoList()
         ui->switchPlayModeBtn->setToolTip(QString::fromUtf8("随机播放"));
         if (!fileList.isEmpty()) {
             shuffledList_ = fileList;
-            std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+            //std::random_shuffle(shuffledList_.begin(), shuffledList_.end());
+            std::shuffle(shuffledList_.begin(), shuffledList_.end(), std::mt19937(std::random_device{}()));
         }
         break;
     default:
@@ -1456,5 +1474,36 @@ void MainWindow::on_subtitleBtn_clicked()
     subtitlePopup_->show();
 }
 
+void MainWindow::setupSummaryPanel() {
+    m_summaryManager = new VideoSummaryManager();
+    m_summaryPanel = new SummaryPanel(this);
 
+    m_summaryDock = new QDockWidget(QStringLiteral(u"AI \u89c6\u9891\u603b\u7ed3"), this);
+    m_summaryDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    m_summaryDock->setWidget(m_summaryPanel);
+    m_summaryDock->setMinimumWidth(320);
+    m_summaryDock->setMaximumWidth(420);
+    m_summaryDock->setStyleSheet(QString::fromLatin1(
+        "QDockWidget { border: none; background-color: #FFFFFF; }"
+        "QDockWidget > QWidget { background-color: #FFFFFF; border: none; }"
+        "QDockWidget::title { background: #F9FAFB; border-bottom: 1px solid #E5E7EB; padding: 6px 8px; }"
+    ));
+    addDockWidget(Qt::RightDockWidgetArea, m_summaryDock);
+    m_summaryDock->hide();
+
+    m_summaryPanel->bindManager(m_summaryManager);
+
+    connect(m_summaryPanel, &SummaryPanel::seekTo, this, [this](qint64 ms) {
+        player_->seek(ms);
+    });
+
+    connect(player_, &PlayerCore::timeChanged, m_summaryPanel, [this]() {
+        m_summaryPanel->onPositionChanged(player_->getCurrentPos());
+    });
+}
+
+void MainWindow::on_aiSummaryBtn_clicked()
+{
+    m_summaryDock->setVisible(!m_summaryDock->isVisible());
+}
 

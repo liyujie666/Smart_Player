@@ -27,6 +27,14 @@ ConfigManager::ConfigManager()
     }
     if (!settings_->contains("modelPath")) settings_->setValue("modelPath", "");
 
+    // AI 视频总结默认配置
+    if (!settings_->contains("summary/apiKey")) settings_->setValue("summary/apiKey", "");
+    if (!settings_->contains("summary/modelEndpoint")) {
+        settings_->setValue("summary/modelEndpoint", "https://dashscope.aliyuncs.com/compatible-mode/v1");
+    }
+    if (!settings_->contains("summary/segmentDuration")) settings_->setValue("summary/segmentDuration", 5000);
+    if (!settings_->contains("summary/model")) settings_->setValue("summary/model", "qwen-vl-plus");
+
     QDir().mkpath(getThumbnailDir());
 }
 
@@ -244,4 +252,45 @@ QString ConfigManager::thumbnailPathForVideo(const QString& videoPath) const
 {
     QString hash = QString(QCryptographicHash::hash(videoPath.toUtf8(), QCryptographicHash::Md5).toHex());
     return getThumbnailDir() + hash + ".jpg";
+}
+
+QString ConfigManager::getSummaryApiKey() const
+{
+    return settings_->value("summary/apiKey", "").toString();
+}
+
+void ConfigManager::setSummaryApiKey(const QString& key)
+{
+    settings_->setValue("summary/apiKey", key);
+}
+
+QString ConfigManager::getSummaryModelEndpoint() const
+{
+    return settings_->value("summary/modelEndpoint",
+        "https://dashscope.aliyuncs.com/compatible-mode/v1").toString();
+}
+
+void ConfigManager::setSummaryModelEndpoint(const QString& url)
+{
+    settings_->setValue("summary/modelEndpoint", url);
+}
+
+QString ConfigManager::getSummaryModel() const
+{
+    return settings_->value("summary/model", "qwen-vl-plus").toString();
+}
+
+void ConfigManager::setSummaryModel(const QString& model)
+{
+    settings_->setValue("summary/model", model);
+}
+
+int ConfigManager::getSummarySegmentDuration() const
+{
+    return settings_->value("summary/segmentDuration", 5000).toInt();
+}
+
+void ConfigManager::setSummarySegmentDuration(int ms)
+{
+    settings_->setValue("summary/segmentDuration", ms);
 }

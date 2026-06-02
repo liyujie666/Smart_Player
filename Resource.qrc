@@ -51,5 +51,10 @@
         <file>SmartPlayer-icon/checked.png</file>
         <file>SmartPlayer-icon/uncheck.png</file>
         <file>SmartPlayer-icon/reset.png</file>
+        <file>SmartPlayer-icon/ai_summary.png</file>
+        <file>SmartPlayer-icon/ai_summay_2.png</file>
+        <file>SmartPlayer-icon/reset_dark.png</file>
+        <file>SmartPlayer-icon/start_pink.png</file>
+        <file>SmartPlayer-icon/stop_blue.png</file>
     </qresource>
 </RCC>

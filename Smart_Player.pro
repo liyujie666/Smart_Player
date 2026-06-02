@@ -12,13 +12,20 @@ CONFIG += c++17
 
 SOURCES += \
     configmanager.cpp \
+    videosummarymanager.cpp \
+    videosummarysegmenter.cpp \
+    videosummarynetworkclient.cpp \
     subtitle/asrmanager.cpp \
     subtitle/asrofflinestrategy.cpp \
     subtitle/asrrealtimestrategy.cpp \
     subtitle/asrworker.cpp \
+    #translator/subtitletranslator.cpp \
+    #translator/ctranslate2backend.cpp \
+    #translator/translatorintegration.cpp \
     main.cpp \
     mainwindow.cpp \
     subtitlepopup.cpp \
+    summarypanel.cpp \
     utils/audioringbuffer.cpp \
     utils/picturecreator.cpp \
     utils/log.cpp \
@@ -40,15 +47,22 @@ SOURCES += \
     converter/videoconverter.cpp \
     pool/framepool.cpp \
     pool/packetpool.cpp \
-    playercore.cpp \
+    playercore.cpp
 
 HEADERS += \
     configmanager.h \
+    videosummarymanager.h \
+    videosummarysegmenter.h \
+    videosummarynetworkclient.h \
     subtitle/asrmanager.h \
     subtitle/asrofflinestrategy.h \
     subtitle/asrrealtimestrategy.h \
     subtitle/asrworker.h \
+    #translator/subtitletranslator.h \
+    #translator/ctranslate2backend.h \
+    #translator/translatorintegration.h \
     mainwindow.h \
+    summarypanel.h \
     queue/subtitlequeue.h \
     subtitle/iasrstrategy.h \
     subtitlepopup.h \
@@ -76,7 +90,7 @@ HEADERS += \
     pool/framepool.h \
     pool/globalpool.h \
     pool/packetpool.h \
-    playercore.h \
+    playercore.h
 
 FORMS += \
     mainwindow.ui \
@@ -97,7 +111,7 @@ RC_FILE = app_icon.rc
 
 INCLUDEPATH += $$PWD/dependencies/include
 
-LIBS        += -L$$PWD/dependencies/lib -lavcodec -lavdevice -lavfilter -lavformat -lavutil -lpostproc -lswresample -lswscale -lSDL2 -lwhisper -lggml -lggml-base -lggml-cpu
+LIBS        += -L$$PWD/dependencies/lib -lavcodec -lavdevice -lavfilter -lavformat -lavutil -lpostproc -lswresample -lswscale -lSDL2 -lwhisper -lggml -lggml-base -lggml-cpu -lctranslate2 -lsentencepiece -lsentencepiece_train
 LIBS += -ldbghelp
 DEFINES += SDL_MAIN_HANDLED
 DISTFILES += \

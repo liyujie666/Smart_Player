@@ -6,6 +6,11 @@
 #include <QDebug>
 #include <QDir>
 #include <QStandardPaths>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QLineEdit>
+#include <QSpinBox>
 #include "configmanager.h"
 
 settingDialog::settingDialog(QWidget *parent)
@@ -62,6 +67,102 @@ settingDialog::settingDialog(QWidget *parent)
 
     // 加载模型路径
     ui->modelPathLineEdit->setText(cfg.getModelPath());
+
+    // 创建 AI 视频总结配置区域
+    QVBoxLayout* mainLayout = qobject_cast<QVBoxLayout*>(ui->verticalLayout);
+    if (mainLayout) {
+        // 分隔线
+        QFrame* line = new QFrame(this);
+        line->setFrameShape(QFrame::HLine);
+        line->setStyleSheet("QFrame { color: #555; }");
+        mainLayout->addWidget(line);
+
+        // AI 总结标题
+        QLabel* summaryTitle = new QLabel(QStringLiteral(u"AI 视频总结:"), this);
+    summaryTitle->setStyleSheet(QStringLiteral(
+        u"QLabel { color: white; font-size: 13px; font-weight: bold; }"));
+        mainLayout->addWidget(summaryTitle);
+
+        // API Key 行
+        QHBoxLayout* apiKeyRow = new QHBoxLayout();
+        QLabel* apiKeyLabel = new QLabel(QString::fromLatin1("API Key:"), this);
+        apiKeyLabel->setStyleSheet(QString::fromLatin1("QLabel { color: white; font-size: 13px; }"));
+        apiKeyLabel->setFixedWidth(80);
+        m_summaryApiKeyLine = new QLineEdit(this);
+        m_summaryApiKeyLine->setStyleSheet(QString::fromLatin1(
+            "QLineEdit { color: white; background-color: #3c3c3c; font-size: 12px; }"));
+        m_summaryApiKeyLine->setPlaceholderText(QString::fromLatin1("sk-xxxxxxxxxxxxxxxx"));
+        m_summaryApiKeyLine->setText(cfg.getSummaryApiKey());
+        m_summaryApiKeyLine->setEchoMode(QLineEdit::Password);
+        apiKeyRow->addWidget(apiKeyLabel);
+        apiKeyRow->addWidget(m_summaryApiKeyLine);
+        mainLayout->addLayout(apiKeyRow);
+
+        // 端点 URL 行
+        QHBoxLayout* endpointRow = new QHBoxLayout();
+        QLabel* endpointLabel = new QLabel(QStringLiteral(u"端点:"), this);
+        endpointLabel->setStyleSheet(QString::fromLatin1("QLabel { color: white; font-size: 13px; }"));
+        endpointLabel->setFixedWidth(80);
+        m_summaryEndpointLine = new QLineEdit(this);
+        m_summaryEndpointLine->setStyleSheet(QString::fromLatin1(
+            "QLineEdit { color: white; background-color: #3c3c3c; font-size: 12px; }"));
+        m_summaryEndpointLine->setText(cfg.getSummaryModelEndpoint());
+        endpointRow->addWidget(endpointLabel);
+        endpointRow->addWidget(m_summaryEndpointLine);
+        mainLayout->addLayout(endpointRow);
+
+        // 模型选择行
+        QHBoxLayout* modelRow = new QHBoxLayout();
+        QLabel* modelLabel = new QLabel(QStringLiteral(u"VLM 模型:"), this);
+        modelLabel->setStyleSheet(QString::fromLatin1("QLabel { color: white; font-size: 13px; }"));
+        modelLabel->setFixedWidth(80);
+        m_summaryModelCombo = new QComboBox(this);
+        m_summaryModelCombo->setStyleSheet(QString::fromLatin1(
+            "QComboBox { color: white; background-color: #3c3c3c; font-size: 12px; }"));
+        m_summaryModelCombo->addItem(QStringLiteral(u"qwen-vl-plus (均衡)"), "qwen-vl-plus");
+        m_summaryModelCombo->addItem(QStringLiteral(u"qwen-vl-max (最强)"), "qwen-vl-max");
+        m_summaryModelCombo->addItem(QStringLiteral(u"qwen-vl-flash (快速)"), "qwen-vl-flash");
+        m_summaryModelCombo->setCurrentText(cfg.getSummaryModel().isEmpty()
+            ? QStringLiteral(u"qwen-vl-plus (均衡)")
+            : cfg.getSummaryModel());
+        modelRow->addWidget(modelLabel);
+        modelRow->addWidget(m_summaryModelCombo);
+        modelRow->addStretch();
+        mainLayout->addLayout(modelRow);
+
+        // 分段时长行
+        QHBoxLayout* segmentRow = new QHBoxLayout();
+        QLabel* segLabel = new QLabel(QStringLiteral(u"分段时长:"), this);
+        segLabel->setStyleSheet(QString::fromLatin1("QLabel { color: white; font-size: 13px; }"));
+        segLabel->setFixedWidth(80);
+        m_summarySegmentDurationSpin = new QSpinBox(this);
+        m_summarySegmentDurationSpin->setStyleSheet(QString::fromLatin1(
+            "QSpinBox { color: white; background-color: #3c3c3c; font-size: 12px; }"));
+        m_summarySegmentDurationSpin->setRange(1000, 60000);
+        m_summarySegmentDurationSpin->setSingleStep(1000);
+        m_summarySegmentDurationSpin->setValue(cfg.getSummarySegmentDuration());
+        m_summarySegmentDurationLabel = new QLabel(QString::fromLatin1("ms"), this);
+        m_summarySegmentDurationLabel->setStyleSheet(QString::fromLatin1(
+            "QLabel { color: #aaa; font-size: 12px; }"));
+        segmentRow->addWidget(segLabel);
+        segmentRow->addWidget(m_summarySegmentDurationSpin);
+        segmentRow->addWidget(m_summarySegmentDurationLabel);
+        segmentRow->addStretch();
+        mainLayout->addLayout(segmentRow);
+    }
+
+    // 扩大对话框高度以容纳新控件
+    setMinimumHeight(650);
+    resize(width(), 650);
+
+    connect(m_summaryApiKeyLine, &QLineEdit::textChanged,
+            this, &settingDialog::on_summaryApiKeyChanged);
+    connect(m_summaryEndpointLine, &QLineEdit::textChanged,
+            this, &settingDialog::on_summaryEndpointChanged);
+    connect(m_summarySegmentDurationSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &settingDialog::on_summarySegmentDurationChanged);
+    connect(m_summaryModelCombo, &QComboBox::currentTextChanged,
+            this, &settingDialog::on_summaryModelChanged);
 
     connect(group2, &QButtonGroup::buttonClicked, this, [=](QAbstractButton* button){
         int id = group2->id(button);
@@ -160,6 +261,12 @@ void settingDialog::on_confirmBtn_clicked()
     QString modelPath = ui->modelPathLineEdit->text().trimmed();
     cfg.setModelPath(modelPath);
     emit updateModelPath(modelPath);
+
+    // 保存 AI 视频总结配置
+    if (m_summaryApiKeyLine) cfg.setSummaryApiKey(m_summaryApiKeyLine->text().trimmed());
+    if (m_summaryEndpointLine) cfg.setSummaryModelEndpoint(m_summaryEndpointLine->text().trimmed());
+    if (m_summarySegmentDurationSpin) cfg.setSummarySegmentDuration(m_summarySegmentDurationSpin->value());
+    if (m_summaryModelCombo) cfg.setSummaryModel(m_summaryModelCombo->currentData().toString());
     cfg.save();
     accept();
 }
@@ -186,6 +293,23 @@ void settingDialog::on_resetConfigBtn_clicked()
     ui->contrastLabel->setText("100");
     ui->baoheSlider->setValue(100);
     ui->baoheLabel->setText("100");
+}
+
+void settingDialog::on_summaryApiKeyChanged(const QString& text) {
+    ConfigManager::instance().setSummaryApiKey(text);
+}
+
+void settingDialog::on_summaryEndpointChanged(const QString& text) {
+    ConfigManager::instance().setSummaryModelEndpoint(text);
+}
+
+void settingDialog::on_summarySegmentDurationChanged(int value) {
+    ConfigManager::instance().setSummarySegmentDuration(value);
+}
+
+void settingDialog::on_summaryModelChanged(const QString& text) {
+    Q_UNUSED(text);
+    ConfigManager::instance().setSummaryModel(m_summaryModelCombo->currentData().toString());
 }
 
 

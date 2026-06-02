@@ -12,6 +12,8 @@
 #include "videoitemwidget.h"
 #include "subtitlepopup.h"
 #include "configmanager.h"
+#include "videosummarymanager.h"
+#include "summarypanel.h"
 #include <QMainWindow>
 #include <qlistwidget.h>
 #include <QVector>
@@ -112,6 +114,8 @@ private slots:
     void onThumbBatchTimeout();
     void onThumbLoaded(const QString& path, const QImage& thumb);
 
+    void on_aiSummaryBtn_clicked();
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -131,6 +135,8 @@ private:
     void enterFullScreenMode();
     void exitFullScreenMode();
     void centerLoadingLabel();
+
+    void setupSummaryPanel();
 
 
 
@@ -169,6 +175,9 @@ private:
     QLabel* loadingLabel_ = nullptr;
     PlayMode playMode_ = PlayMode::ListLoop;
 
+    VideoSummaryManager* m_summaryManager = nullptr;
+    SummaryPanel* m_summaryPanel = nullptr;
+    QDockWidget* m_summaryDock = nullptr;
 
 };
 #endif // MAINWINDOW_H

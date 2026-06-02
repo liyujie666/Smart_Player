@@ -52,6 +52,19 @@ public:
     QString getModelPath() const;
     void setModelPath(const QString& path);
 
+    // AI 视频总结配置
+    QString getSummaryApiKey() const;
+    void setSummaryApiKey(const QString& key);
+
+    QString getSummaryModelEndpoint() const;
+    void setSummaryModelEndpoint(const QString& url);
+
+    QString getSummaryModel() const;
+    void setSummaryModel(const QString& model);
+
+    int getSummarySegmentDuration() const;
+    void setSummarySegmentDuration(int ms);
+
     // Playlist (JSON)
     struct VideoItem {
         QString path;
