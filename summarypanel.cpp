@@ -44,6 +44,17 @@ QLabel* makeSectionHeader(const QString& text, QWidget* parent) {
 void setWidgetBackground(QWidget* w, const QString& color) {
     w->setStyleSheet(QString::fromLatin1("QWidget#%1 { background-color: %2; border-radius: 10px; }").arg(w->objectName()).arg(color));
 }
+
+void clearFlowLayout(QLayout* layout) {
+    if (!layout) return;
+    QLayoutItem* child;
+    while ((child = layout->takeAt(0)) != nullptr) {
+        if (QWidget* w = child->widget()) {
+            w->deleteLater();
+        }
+        delete child;
+    }
+}
 }
 
 SummaryPanel::SummaryPanel(QWidget* parent)
@@ -150,90 +161,27 @@ void SummaryPanel::buildUI() {
     m_segmentList->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     mainLayout->addWidget(m_segmentList, 1);
 
-    // ===== Collapsible: Entities =====
+    // ===== 实体(标签云形态,默认展开) =====
     m_entitiesWidget = new QWidget(this);
     m_entitiesWidget->setObjectName("entitiesWidget");
     QVBoxLayout* entitiesTopLayout = new QVBoxLayout(m_entitiesWidget);
     entitiesTopLayout->setContentsMargins(0, 0, 0, 0);
-    entitiesTopLayout->setSpacing(0);
+    entitiesTopLayout->setSpacing(4);
 
-    QWidget* entitiesHeader = new QWidget(this);
-    entitiesHeader->setObjectName("entitiesHeader");
-    QHBoxLayout* entitiesHeaderLayout = new QHBoxLayout(entitiesHeader);
-    entitiesHeaderLayout->setContentsMargins(0, 4, 4, 4);
-    QLabel* entitiesTitle = new QLabel(QStringLiteral(u"\u25b7 \u63d0\u5230\u7684\u6982\u5ff5 (0)"), this);
-    entitiesTitle->setObjectName("entitiesTitle");
-    entitiesTitle->setStyleSheet(QString::fromLatin1(
-        "QLabel { color: #374151; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; font-weight: 600; }"));
-    entitiesHeaderLayout->addWidget(entitiesTitle);
-    entitiesHeaderLayout->addStretch();
+    m_entitiesTitle = new QLabel(QStringLiteral(u"\u63d0\u5230\u7684\u6982\u5ff5 (0)"), this);
+    m_entitiesTitle->setObjectName("entitiesTitle");
+    m_entitiesTitle->setStyleSheet(QString::fromLatin1(
+        "QLabel { color: #1F2937; font-size: 11px; font-family: Microsoft YaHei, PingFang SC, sans-serif; "
+        "font-weight: 600; padding: 12px 0 4px 0; letter-spacing: 0.5px; }"));
+    entitiesTopLayout->addWidget(m_entitiesTitle);
 
     m_entitiesContent = new QWidget(this);
     m_entitiesContent->setObjectName("entitiesContent");
-    m_entitiesContentLayout = new QVBoxLayout(m_entitiesContent);
-    m_entitiesContentLayout->setContentsMargins(4, 0, 4, 4);
-    m_entitiesContent->setVisible(false);
-
-    entitiesTopLayout->addWidget(entitiesHeader);
+    m_entitiesContentLayout = new FlowLayout(m_entitiesContent, 6, 6, 6);
+    m_entitiesContentLayout->setContentsMargins(0, 0, 0, 0);
     entitiesTopLayout->addWidget(m_entitiesContent);
 
-    m_entitiesHeader = entitiesHeader;
-    entitiesHeader->installEventFilter(this);
-
     mainLayout->addWidget(m_entitiesWidget);
-
-    // ===== Collapsible: Transcript =====
-    m_transcriptWidget = new QWidget(this);
-    m_transcriptWidget->setObjectName("transcriptWidget");
-    QVBoxLayout* transcriptTopLayout = new QVBoxLayout(m_transcriptWidget);
-    transcriptTopLayout->setContentsMargins(0, 0, 0, 0);
-    transcriptTopLayout->setSpacing(0);
-
-    QWidget* transcriptHeader = new QWidget(this);
-    transcriptHeader->setObjectName("transcriptHeader");
-    QHBoxLayout* transcriptHeaderLayout = new QHBoxLayout(transcriptHeader);
-    transcriptHeaderLayout->setContentsMargins(0, 4, 4, 4);
-    QLabel* transcriptTitle = new QLabel(QStringLiteral(u"\u25b7 \u5b8c\u6574\u5b57\u5e55 []\u641c\u7d22...]"), this);
-    transcriptTitle->setObjectName("transcriptTitle");
-    transcriptTitle->setStyleSheet(QString::fromLatin1(
-        "QLabel { color: #374151; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; font-weight: 600; }"));
-    transcriptHeaderLayout->addWidget(transcriptTitle);
-    transcriptHeaderLayout->addStretch();
-
-    QWidget* transcriptSearchRow = new QWidget(this);
-    transcriptSearchRow->setObjectName("transcriptSearchRow");
-    QHBoxLayout* transcriptSearchLayout = new QHBoxLayout(transcriptSearchRow);
-    transcriptSearchLayout->setContentsMargins(4, 0, 4, 0);
-    transcriptSearchLayout->setSpacing(4);
-    m_lineTranscriptSearch = new QLineEdit(this);
-    m_lineTranscriptSearch->setPlaceholderText(QStringLiteral(u"\u641c\u7d22\u5b57\u5e55..."));
-    m_lineTranscriptSearch->setStyleSheet(QString::fromLatin1(
-        "QLineEdit { color: #374151; background-color: #F9FAFB; border: 1px solid #E5E7EB; "
-        "border-radius: 6px; font-size: 12px; padding: 5px 10px; font-family: Microsoft YaHei, PingFang SC, sans-serif; }"
-        "QLineEdit:focus { border-color: #6366F1; background-color: white; }"
-        "QLineEdit::placeholder { color: #9CA3AF; }"));
-    transcriptSearchLayout->addWidget(m_lineTranscriptSearch);
-
-    m_transcriptContent = new QWidget(this);
-    m_transcriptContent->setObjectName("transcriptContent");
-    QVBoxLayout* transcriptContentLayout = new QVBoxLayout(m_transcriptContent);
-    transcriptContentLayout->setContentsMargins(4, 0, 4, 4);
-    m_txtTranscript = new QTextEdit(this);
-    m_txtTranscript->setReadOnly(true);
-    m_txtTranscript->setPlaceholderText(QStringLiteral(u"\u5b8c\u6574\u5b57\u5e55\u5c06\u663e\u793a\u5728\u6b64"));
-    m_txtTranscript->setMaximumHeight(180);
-    transcriptContentLayout->addWidget(transcriptSearchRow);
-    transcriptContentLayout->addWidget(m_txtTranscript);
-
-    m_transcriptContent->setVisible(false);
-
-    transcriptTopLayout->addWidget(transcriptHeader);
-    transcriptTopLayout->addWidget(m_transcriptContent);
-
-    m_transcriptHeader = transcriptHeader;
-    transcriptHeader->installEventFilter(this);
-
-    mainLayout->addWidget(m_transcriptWidget);
 
     // ===== Progress area =====
     m_progressBar = new QProgressBar(this);
@@ -255,8 +203,6 @@ void SummaryPanel::buildUI() {
     connect(m_btnExport, &QPushButton::clicked, this, &SummaryPanel::onExportClicked);
     connect(m_btnSettings, &QPushButton::clicked, this, &SummaryPanel::onSettingsClicked);
     connect(m_segmentList, &QListWidget::itemClicked, this, &SummaryPanel::onSegmentClicked);
-    connect(m_lineTranscriptSearch, &QLineEdit::textChanged,
-            this, &SummaryPanel::onTranscriptSearchChanged);
 
     // ===== Stylesheet =====
     setStyleSheet(QString::fromLatin1(R"(
@@ -390,9 +336,36 @@ void SummaryPanel::buildUI() {
             font-size: 12px;
             padding: 4px;
         }
-        QWidget#entitiesHeader:hover, QWidget#transcriptHeader:hover {
-            background-color: #F3F4F6;
-            border-radius: 6px;
+        QWidget#entitiesContent {
+            background-color: transparent;
+        }
+        /* 概念标签 chip */
+        QPushButton#entityChip {
+            background-color: #EEF2FF;
+            color: #4338CA;
+            border: 1px solid #C7D2FE;
+            border-radius: 12px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-family: Microsoft YaHei, PingFang SC, sans-serif;
+            font-weight: 500;
+            text-align: center;
+        }
+        QPushButton#entityChip:hover {
+            background-color: #E0E7FF;
+            border-color: #818CF8;
+            color: #3730A3;
+        }
+        QPushButton#entityChip:pressed {
+            background-color: #C7D2FE;
+        }
+        /* 类型小标签(如 "概念" / "人物") */
+        QLabel#entityTypeTag {
+            background-color: transparent;
+            color: #6B7280;
+            font-size: 10px;
+            font-family: Microsoft YaHei, PingFang SC, sans-serif;
+            padding: 0 2px;
         }
     )"));
 }
@@ -451,32 +424,17 @@ void SummaryPanel::resetPanelForNewVideo() {
     // 章节列表
     m_segmentList->clear();
 
-    // 实体
+    // 实体标签云
+    clearFlowLayout(m_entitiesContentLayout);
     {
-        QLayoutItem* child;
-        while ((child = m_entitiesContentLayout->takeAt(0)) != nullptr) {
-            delete child->widget();
-            delete child;
-        }
-        QLabel* empty = new QLabel(QStringLiteral(u"(\u6682\u65e0)"), this);
+        QLabel* empty = new QLabel(QStringLiteral(u"(\u6682\u65e0)"), m_entitiesContent);
         empty->setStyleSheet(QString::fromLatin1(
-            "QLabel { color: #9CA3AF; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; padding: 8px 4px; }"));
+            "QLabel { color: #9CA3AF; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; padding: 4px; }"));
         m_entitiesContentLayout->addWidget(empty);
     }
-    // 同步实体标题栏的计数
-    for (auto obj : findChildren<QLabel*>()) {
-        if (obj->objectName() == QStringLiteral("entitiesTitle")) {
-            obj->setText(m_entitiesExpanded
-                ? QStringLiteral(u"\u25bc \u63d0\u5230\u7684\u6982\u5ff5")
-                : QStringLiteral(u"\u25b7 \u63d0\u5230\u7684\u6982\u5ff5 (0)"));
-            break;
-        }
+    if (m_entitiesTitle) {
+        m_entitiesTitle->setText(QStringLiteral(u"\u63d0\u5230\u7684\u6982\u5ff5 (0)"));
     }
-
-    // 字幕
-    m_txtTranscript->clear();
-    m_txtTranscript->setPlaceholderText(QStringLiteral(u"\u5b8c\u6574\u5b57\u5e55\u5c06\u663e\u793a\u5728\u6b64"));
-    m_lineTranscriptSearch->clear();
 
     // 进度 / 状态
     m_progressBar->setValue(0);
@@ -678,10 +636,6 @@ void SummaryPanel::onPositionChanged(qint64 ms) {
     highlightCurrentSegment(ms);
 }
 
-void SummaryPanel::onTranscriptSearchChanged(const QString& text) {
-    highlightTranscriptMatch(text);
-}
-
 void SummaryPanel::highlightCurrentSegment(qint64 ms) {
     int segIdx = findSegmentAtMs(ms);
     if (segIdx == m_highlightedSegment) return;
@@ -703,63 +657,15 @@ void SummaryPanel::highlightCurrentSegment(qint64 ms) {
     }
 }
 
-void SummaryPanel::highlightTranscriptMatch(const QString& keyword) {
-    if (keyword.isEmpty()) {
-        m_txtTranscript->setExtraSelections({});
-        return;
-    }
-    QList<QTextEdit::ExtraSelection> selections;
-    QTextDocument* doc = m_txtTranscript->document();
-    QTextCursor highlightCursor(doc);
-    QTextCharFormat highlightFormat;
-    highlightFormat.setBackground(QColor(254, 240, 138));
-    highlightFormat.setForeground(QColor(0, 0, 0));
-
-    while (!highlightCursor.isNull()) {
-        highlightCursor = doc->find(keyword, highlightCursor);
-        if (!highlightCursor.isNull()) {
-            highlightCursor.mergeCharFormat(highlightFormat);
-        }
-    }
-    m_txtTranscript->setExtraSelections(selections);
-}
-
 bool SummaryPanel::eventFilter(QObject* watched, QEvent* event) {
     if (event->type() == QEvent::MouseButtonPress) {
-        if (watched == m_entitiesHeader) {
-            m_entitiesExpanded = !m_entitiesExpanded;
-            m_entitiesContent->setVisible(m_entitiesExpanded);
-            for (auto obj : findChildren<QLabel*>()) {
-                if (obj->objectName() == QStringLiteral("entitiesTitle")) {
-                    obj->setText(m_entitiesExpanded
-                        ? QStringLiteral(u"\u25bc \u63d0\u5230\u7684\u6982\u5ff5")
-                        : QStringLiteral(u"\u25b7 \u63d0\u5230\u7684\u6982\u5ff5 (0)"));
-                    break;
-                }
-            }
+        // 实体 chip 点击 → 跳转到首次出现时间
+        QPushButton* chip = qobject_cast<QPushButton*>(watched);
+        if (chip && chip->objectName() == QStringLiteral("entityChip")) {
+            qint64 ms = chip->property("entityMs").toLongLong();
+            QString name = chip->property("entityName").toString();
+            onEntityClicked(name, ms);
             return true;
-        }
-        if (watched == m_transcriptHeader) {
-            m_transcriptExpanded = !m_transcriptExpanded;
-            m_transcriptContent->setVisible(m_transcriptExpanded);
-            for (auto obj : findChildren<QLabel*>()) {
-                if (obj->objectName() == QStringLiteral("transcriptTitle")) {
-                    obj->setText(m_transcriptExpanded
-                        ? QStringLiteral(u"\u25bc \u5b8c\u6574\u5b57\u5e55 []\u641c\u7d22...]")
-                        : QStringLiteral(u"\u25b7 \u5b8c\u6574\u5b57\u5e55 []\u641c\u7d22...]"));
-                    break;
-                }
-            }
-            return true;
-        }
-        QWidget* tagRow = qobject_cast<QWidget*>(watched);
-        if (tagRow) {
-            QString name = tagRow->property("entityName").toString();
-            qint64 ms = tagRow->property("entityMs").toLongLong();
-            if (!name.isEmpty()) {
-                onEntityClicked(name, ms);
-                return true;
-            }
         }
     }
     return QWidget::eventFilter(watched, event);
@@ -864,82 +770,33 @@ void SummaryPanel::populateFromReport(const SummaryReport& report) {
         }
     }
 
-    // Entities
-    QLayoutItem* ec;
-    while ((ec = m_entitiesContentLayout->takeAt(0)) != nullptr) {
-        delete ec->widget();
-        delete ec;
-    }
+    // 实体 (标签云:每个概念一个 chip,自动换行,默认展开)
+    clearFlowLayout(m_entitiesContentLayout);
     if (report.entities.isEmpty()) {
-        QLabel* empty = new QLabel(QStringLiteral(u"(\u6682\u65e0)"), this);
+        QLabel* empty = new QLabel(QStringLiteral(u"(\u6682\u65e0)"), m_entitiesContent);
         empty->setStyleSheet(QString::fromLatin1(
-            "QLabel { color: #9CA3AF; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; padding: 8px 4px; }"));
+            "QLabel { color: #9CA3AF; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; padding: 4px; }"));
         m_entitiesContentLayout->addWidget(empty);
     } else {
         for (const SummaryEntity& e : report.entities) {
-            QWidget* tagRow = new QWidget(this);
-            QHBoxLayout* tagRowLayout = new QHBoxLayout(tagRow);
-            tagRowLayout->setContentsMargins(2, 2, 2, 2);
-            tagRowLayout->setSpacing(4);
-
-            QLabel* typeTag = new QLabel(e.type, this);
-            typeTag->setFixedWidth(50);
-            typeTag->setAlignment(Qt::AlignCenter);
-            typeTag->setStyleSheet(QString::fromLatin1(
-                "QLabel { background-color: #EEF2FF; color: #6366F1; font-size: 10px; "
-                "border-radius: 4px; padding: 2px 6px; font-family: Microsoft YaHei, PingFang SC, sans-serif; "
-                "font-weight: 500; }"));
-
-            QLabel* nameTag = new QLabel(e.name, this);
-            nameTag->setStyleSheet(QString::fromLatin1(
-                "QLabel { color: #374151; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; }"));
-
-            QLabel* timeTag = new QLabel(formatDuration(e.firstMentionMs), this);
-            timeTag->setStyleSheet(QString::fromLatin1(
-                "QLabel { color: #9CA3AF; font-size: 11px; font-family: Microsoft YaHei, PingFang SC, sans-serif; }"));
-            timeTag->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-
-            tagRowLayout->addWidget(typeTag);
-            tagRowLayout->addWidget(nameTag, 1);
-            tagRowLayout->addWidget(timeTag);
-
-            tagRow->setStyleSheet(QString::fromLatin1(
-                "QWidget:hover { background-color: #F9FAFB; border-radius: 6px; }"));
-            tagRow->setCursor(Qt::PointingHandCursor);
-            tagRow->installEventFilter(this);
-            tagRow->setProperty("entityMs", e.firstMentionMs);
-            tagRow->setProperty("entityName", e.name);
-
-            m_entitiesContentLayout->addWidget(tagRow);
+            // 用 QPushButton 当 chip,自带 hover/pressed 效果
+            QPushButton* chip = new QPushButton(e.name, m_entitiesContent);
+            chip->setObjectName(QStringLiteral("entityChip"));
+            chip->setCursor(Qt::PointingHandCursor);
+            chip->setToolTip(QStringLiteral(u"%1 · %2 · \u9996\u6b21\u51fa\u73b0 %3")
+                .arg(e.name, e.type, formatDuration(e.firstMentionMs)));
+            chip->setProperty("entityName", e.name);
+            chip->setProperty("entityMs", e.firstMentionMs);
+            chip->installEventFilter(this);
+            m_entitiesContentLayout->addWidget(chip);
         }
     }
-
-    // Update entities header count
-    for (auto obj : findChildren<QLabel*>()) {
-        if (obj->objectName() == QStringLiteral("entitiesTitle")) {
-            obj->setText(m_entitiesExpanded
-                ? QStringLiteral(u"\u25bc \u63d0\u5230\u7684\u6982\u5ff5 (%1)").arg(report.entities.size())
-                : QStringLiteral(u"\u25b7 \u63d0\u5230\u7684\u6982\u5ff5 (%1)").arg(report.entities.size()));
-            break;
-        }
-    }
-
-    // Transcript
-    m_txtTranscript->clear();
-    const QList<SubtitleItem>& subs = m_manager ? m_manager->asrResults() : QList<SubtitleItem>();
-    if (subs.isEmpty()) {
-        m_txtTranscript->setPlaceholderText(QStringLiteral(u"\u6682\u65e0\u5b57\u5e55\u6570\u636e"));
-    } else {
-        QStringList lines;
-        for (const SubtitleItem& sub : subs) {
-            QString ts = formatDuration(qRound(sub.start_sec * 1000));
-            lines.append(QStringLiteral(u"[%1] %2").arg(ts, -8).arg(QString::fromStdString(sub.text)));
-        }
-        m_txtTranscript->setPlainText(lines.join("\n"));
+    if (m_entitiesTitle) {
+        m_entitiesTitle->setText(QStringLiteral(u"\u63d0\u5230\u7684\u6982\u5ff5 (%1)").arg(report.entities.size()));
     }
 
     // Rebuild segment list with chapter titles from report
-    // 解除屏蔽后立即刷新，此时已有章节标题
+    // 解除屏蔽后立即刷新,此时已有章节标题
     m_analysisInProgress = false;
     rebuildSegmentList(report.chapters);
 

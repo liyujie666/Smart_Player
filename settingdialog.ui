@@ -26,8 +26,31 @@
    <string>Dialog</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QDialog { color: black;background:black; }
-</string>
+   <string notr="true">QRadioButton{
+	font-size:13px;
+}
+QLabel { 
+font-size:13px;
+ }
+QPushButton{
+	max-height:17px;
+	max-width:50px;
+	min-height:17px;
+	min-width:50px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}
+QComboBox{
+	font-size:13px;
+	min-width:30px;
+}
+QComboBox QAbstractItemView {
+    color: white;
+}
+QLineEdit{
+font-size:12px;
+}</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -36,7 +59,6 @@
       <widget class="QLabel" name="label">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -49,7 +71,6 @@ font-size:13px;
       <widget class="QRadioButton" name="softwareRadio">
        <property name="styleSheet">
         <string notr="true">QRadioButton{
-	color:white;
 	font-size:13px;
 }</string>
        </property>
@@ -65,7 +86,6 @@ font-size:13px;
       <widget class="QRadioButton" name="hardwareRadio">
        <property name="styleSheet">
         <string notr="true">QRadioButton{
-	color:white;
 	font-size:13px;
 }</string>
        </property>
@@ -95,7 +115,6 @@ font-size:13px;
       <widget class="QLabel" name="label_2">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -108,12 +127,11 @@ font-size:13px;
       <widget class="QComboBox" name="decodeCombox">
        <property name="styleSheet">
         <string notr="true">QComboBox{
-	color:white;
 	font-size:13px;
 	min-width:30px;
 }
-QComboBox QAbstractItemView {
-    color: white;
+QComboBox QAbstractItemView::item{
+color:black;
 }</string>
        </property>
        <item>
@@ -192,7 +210,6 @@ QComboBox QAbstractItemView {
       <widget class="QLabel" name="label_3">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -233,7 +250,6 @@ QSlider::sub-page:horizontal {
       <widget class="QLabel" name="lightLabel">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -263,7 +279,6 @@ font-size:13px;
       <widget class="QLabel" name="contrastLabel1">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -304,7 +319,6 @@ QSlider::sub-page:horizontal {
       <widget class="QLabel" name="contrastLabel">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -334,7 +348,6 @@ font-size:13px;
       <widget class="QLabel" name="baoheLabel1">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -375,7 +388,6 @@ QSlider::sub-page:horizontal {
       <widget class="QLabel" name="baoheLabel">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -415,7 +427,6 @@ font-size:13px;
 	border:none;
 background-color: transparent;
 border-radius:5px;
-color:white;
 }</string>
        </property>
        <property name="text">
@@ -441,7 +452,6 @@ color:white;
       <widget class="QLabel" name="label_5">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -455,7 +465,6 @@ font-size:13px;
        <property name="styleSheet">
         <string notr="true">QRadioButton
 {
-color: white;
 font-size:13px;
 }
 
@@ -474,7 +483,6 @@ font-size:13px;
        <property name="styleSheet">
         <string notr="true">QRadioButton
 {
-color: white;
 font-size:13px;
 }
 </string>
@@ -505,7 +513,6 @@ font-size:13px;
       <widget class="QLabel" name="label_6">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -530,7 +537,6 @@ font-size:13px;
        </property>
        <property name="styleSheet">
         <string notr="true">QLineEdit{
-color:white;
 font-size:12px;
 }</string>
        </property>
@@ -546,7 +552,6 @@ font-size:12px;
       <widget class="QPushButton" name="selectPathBtn">
        <property name="styleSheet">
         <string notr="true">QPushButton{
-	color:white;
 	font-size:13px;
 	max-width:45px;
 	min-width:45px;
@@ -580,7 +585,6 @@ font-size:12px;
       <widget class="QLabel" name="label_7">
        <property name="styleSheet">
         <string notr="true">QLabel { 
-color: white;
 font-size:13px;
  }</string>
        </property>
@@ -605,7 +609,6 @@ font-size:13px;
        </property>
        <property name="styleSheet">
         <string notr="true">QLineEdit{
-color:white;
 font-size:12px;
 }</string>
        </property>
@@ -621,7 +624,6 @@ font-size:12px;
       <widget class="QPushButton" name="uploadModelPathBtn">
        <property name="styleSheet">
         <string notr="true">QPushButton{
-	color:white;
 	font-size:13px;
 	max-width:45px;
 	min-width:45px;

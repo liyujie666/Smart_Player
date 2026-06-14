@@ -17,6 +17,7 @@
 #include <QCheckBox>
 #include <QSignalMapper>
 #include <QToolButton>
+#include "flowlayout.h"
 #include "videosummarymanager.h"
 
 class SummaryPanel : public QWidget {
@@ -51,7 +52,6 @@ private slots:
     void onErrorOccurred(const QString& message);
     void onSegmentClicked(QListWidgetItem* item);
     void onEntityClicked(const QString& entityName, qint64 ms);
-    void onTranscriptSearchChanged(const QString& text);
 
 private:
     void buildUI();
@@ -64,7 +64,6 @@ private:
     void exportMarkdown(const SummaryReport& report);
     int findSegmentAtMs(qint64 ms) const;
     void highlightCurrentSegment(qint64 ms);
-    void highlightTranscriptMatch(const QString& keyword);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -94,20 +93,11 @@ private:
     QLabel* m_chapterHeader = nullptr;
     QListWidget* m_segmentList = nullptr;
 
-    // Collapsible: Entities
+    // 实体：默认展开，FlowLayout 排布的标签云
     QWidget* m_entitiesWidget = nullptr;
-    QWidget* m_entitiesHeader = nullptr;
-    bool m_entitiesExpanded = false;
+    QLabel* m_entitiesTitle = nullptr;
     QWidget* m_entitiesContent = nullptr;
-    QVBoxLayout* m_entitiesContentLayout = nullptr;
-
-    // Collapsible: Transcript
-    QWidget* m_transcriptWidget = nullptr;
-    QWidget* m_transcriptHeader = nullptr;
-    bool m_transcriptExpanded = false;
-    QWidget* m_transcriptContent = nullptr;
-    QLineEdit* m_lineTranscriptSearch = nullptr;
-    QTextEdit* m_txtTranscript = nullptr;
+    FlowLayout* m_entitiesContentLayout = nullptr;
 
     // Progress area
     QLabel* m_lblStatus = nullptr;

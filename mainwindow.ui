@@ -379,35 +379,78 @@
            </property>
            <property name="styleSheet">
             <string notr="true">QListWidget{
+	background-color: #000000;
 	border:none;
 }
 QListWidget::item:selected {
     background: transparent;
 }
- QListWidget::item:hover {
+QListWidget::item:hover {
         background: rgba(100, 100, 100,100);  /* 半透明灰色悬浮 */
     }
-QScrollBar:horizontal {
-    height: 12px; /* 滚动条高度 */
-    background: #f0f0f0; /* 滑槽背景 */
+
+/* ========== 暗色滚动条（仅作用于 fileList 内的滚动条） ========== */
+
+/* 垂直滚动条 */
+QListWidget#fileList QScrollBar:vertical {
+    background: transparent;             /* 整条滚动条背景透明 */
+    width: 8px;                          /* 滚动条宽度 */
+    margin: 4px 2px 4px 0;               /* 上下留出 4px 让滑块不会贴边 */
+    border: none;
+}
+QListWidget#fileList QScrollBar::handle:vertical {
+    background: rgba(255, 255, 255, 0.18); /* 半透明白,叠加在黑底上呈深灰 */
+    min-height: 40px;                    /* 滑块最小高度,避免太短看不见 */
+    border-radius: 4px;                  /* 圆角 */
+    border: none;
+}
+QListWidget#fileList QScrollBar::handle:vertical:hover {
+    background: rgba(255, 255, 255, 0.32); /* hover 变亮 */
+}
+QListWidget#fileList QScrollBar::handle:vertical:pressed {
+    background: rgba(255, 255, 255, 0.45); /* 按下时更亮 */
+}
+QListWidget#fileList QScrollBar::add-line:vertical,
+QListWidget#fileList QScrollBar::sub-line:vertical {
+    background: none;                    /* 隐藏上下箭头按钮 */
+    border: none;
+    height: 0px;
+}
+QListWidget#fileList QScrollBar::add-page:vertical,
+QListWidget#fileList QScrollBar::sub-page:vertical {
+    background: none;                    /* 滑槽未被覆盖部分透明 */
+    border: none;
 }
 
-QScrollBar::handle:horizontal {
-    background: #c1c1c1; /* 滑块颜色 */
-    min-width: 20px; /* 滑块最小宽度 */
-    border-radius: 6px; /* 滑块圆角 */
+/* 水平滚动条（保留旧风格,顺手改成暗色）*/
+QListWidget#fileList QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0 4px 2px 4px;
+    border: none;
 }
-
-QScrollBar::handle:horizontal:hover {
-    background: #a8a8a8; /* 滑块悬浮时颜色 */
+QListWidget#fileList QScrollBar::handle:horizontal {
+    background: rgba(255, 255, 255, 0.18);
+    min-width: 40px;
+    border-radius: 4px;
+    border: none;
 }
-
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-    background: none; /* 隐藏左右箭头 */
+QListWidget#fileList QScrollBar::handle:horizontal:hover {
+    background: rgba(255, 255, 255, 0.32);
 }
-
-QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
-    background: none; /* 滑槽未被滑块覆盖的部分 */
+QListWidget#fileList QScrollBar::handle:horizontal:pressed {
+    background: rgba(255, 255, 255, 0.45);
+}
+QListWidget#fileList QScrollBar::add-line:horizontal,
+QListWidget#fileList QScrollBar::sub-line:horizontal {
+    background: none;                    /* 隐藏左右箭头 */
+    border: none;
+    width: 0px;
+}
+QListWidget#fileList QScrollBar::add-page:horizontal,
+QListWidget#fileList QScrollBar::sub-page:horizontal {
+    background: none;                    /* 滑槽未被覆盖部分透明 */
+    border: none;
 }</string>
            </property>
            <property name="wordWrap">

@@ -27,6 +27,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     subtitlepopup.cpp \
+    flowlayout.cpp \
     summarypanel.cpp \
     utils/audioringbuffer.cpp \
     utils/picturecreator.cpp \
@@ -66,6 +67,7 @@ HEADERS += \
     #translator/ctranslate2backend.h \
     #translator/translatorintegration.h \
     mainwindow.h \
+    flowlayout.h \
     summarypanel.h \
     queue/subtitlequeue.h \
     subtitle/iasrstrategy.h \

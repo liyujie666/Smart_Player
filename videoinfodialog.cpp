@@ -13,6 +13,7 @@ VideoInfoDialog::VideoInfoDialog(QWidget *parent)
 {
     ui->setupUi(this);
     setWindowTitle("视频信息");
+    this->setStyleSheet("QDialog{background-color:black;}QLabel{background-color:black;color:white;}");
 }
 
 VideoInfoDialog::~VideoInfoDialog()

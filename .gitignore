@@ -37,3 +37,6 @@ Thumbs.db
 
 # 可执行文件
 Smart_OBS
+
+# 设计文档
+*.txt
