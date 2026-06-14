@@ -40,6 +40,9 @@ ConfigManager::ConfigManager()
     if (!settings_->contains("summary/semanticMinSegmentMs")) settings_->setValue("summary/semanticMinSegmentMs", 3000);
     if (!settings_->contains("summary/semanticMaxSegmentMs")) settings_->setValue("summary/semanticMaxSegmentMs", 120000);
 
+    // 分析结果缓存 (默认开启)
+    if (!settings_->contains("summary/cacheEnabled")) settings_->setValue("summary/cacheEnabled", true);
+
     QDir().mkpath(getThumbnailDir());
 }
 
@@ -350,4 +353,32 @@ int ConfigManager::getSemanticMaxSegmentMs() const
 void ConfigManager::setSemanticMaxSegmentMs(int ms)
 {
     settings_->setValue("summary/semanticMaxSegmentMs", ms);
+}
+
+bool ConfigManager::getSummaryCacheEnabled() const
+{
+    return settings_->value("summary/cacheEnabled", true).toBool();
+}
+
+void ConfigManager::setSummaryCacheEnabled(bool enabled)
+{
+    settings_->setValue("summary/cacheEnabled", enabled);
+}
+
+QString ConfigManager::getSummaryCacheDir() const
+{
+    QString dir = configDir() + "/summaries";
+    QDir().mkpath(dir);
+    return dir;
+}
+
+QString ConfigManager::computeVideoCacheKey(const QString& videoPath) const
+{
+    QFileInfo fi(videoPath);
+    if (!fi.exists()) return {};
+    QString raw = QString("%1|%2|%3")
+        .arg(fi.absoluteFilePath())
+        .arg(fi.size())
+        .arg(fi.lastModified().toMSecsSinceEpoch());
+    return QString(QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256).toHex().left(16));
 }

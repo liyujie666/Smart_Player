@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QDateTime>
 #include <QNetworkAccessManager>
 #include <QMutex>
 #include <QSemaphore>
@@ -40,6 +41,12 @@ struct SummaryReport {
     QList<SummaryChapter> chapters;
     QString fullMarkdown;
     bool isValid = false;
+
+    // 缓存还原 UI 所需
+    qint64 videoDurationMs = 0;
+    QList<SummarySegment> segments;
+    QList<SubtitleItem> asrResults;
+    QDateTime generatedAt;
 };
 
 class SummaryNetworkClient : public QObject {

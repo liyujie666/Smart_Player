@@ -455,6 +455,9 @@ void VideoSummaryManager::runAnalysis() {
     generateFullReport();
     qDebug() << "[Summary] 完整报告生成完成";
 
+    // 落盘缓存 (默认开启;失败不致命)
+    saveToCache(m_videoPath);
+
     cleanupTempFiles();
 
     setState(SummaryState::Finished);
@@ -874,4 +877,217 @@ void VideoSummaryManager::onReportReady(const QString& reportJson, bool hasError
     if (m_reportLoop) {
         m_reportLoop->quit();
     }
+}
+
+// ===== 分析结果缓存 =====
+
+static QJsonObject subtitleItemToJson(const SubtitleItem& s) {
+    QJsonObject o;
+    o["start"] = s.start_sec;
+    o["end"] = s.end_sec;
+    o["text"] = QString::fromStdString(s.text);
+    return o;
+}
+
+static SubtitleItem subtitleItemFromJson(const QJsonObject& o) {
+    SubtitleItem s;
+    s.start_sec = o["start"].toDouble();
+    s.end_sec = o["end"].toDouble();
+    s.text = o["text"].toString().toStdString();
+    return s;
+}
+
+static QJsonObject segmentToJson(const SummarySegment& s) {
+    QJsonObject o;
+    o["index"] = s.index;
+    o["startMs"] = s.startMs;
+    o["endMs"] = s.endMs;
+    o["speechText"] = s.speechText;
+    o["frameDescriptions"] = QJsonArray::fromStringList(s.frameDescriptions);
+    o["description"] = s.description;
+    o["isAnalyzed"] = s.isAnalyzed;
+    return o;
+}
+
+static SummarySegment segmentFromJson(const QJsonObject& o) {
+    SummarySegment s;
+    s.index = o["index"].toInt();
+    s.startMs = (qint64)o["startMs"].toDouble();
+    s.endMs = (qint64)o["endMs"].toDouble();
+    s.speechText = o["speechText"].toString();
+    s.frameDescriptions = o["frameDescriptions"].toVariant().toStringList();
+    s.description = o["description"].toString();
+    s.isAnalyzed = o["isAnalyzed"].toBool();
+    return s;
+}
+
+bool VideoSummaryManager::tryLoadFromCache(const QString& videoPath) {
+    if (!ConfigManager::instance().getSummaryCacheEnabled()) return false;
+    QString key = ConfigManager::instance().computeVideoCacheKey(videoPath);
+    if (key.isEmpty()) return false;
+
+    QString cacheFile = ConfigManager::instance().getSummaryCacheDir()
+                        + "/" + key + ".json";
+    QFile f(cacheFile);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+
+    QJsonParseError err;
+    QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+    f.close();
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "[SummaryCache] JSON 解析失败,丢弃缓存:" << cacheFile << err.errorString();
+        QFile::remove(cacheFile);
+        return false;
+    }
+
+    QJsonObject root = doc.object();
+    if (root["cacheKey"].toString() != key) {
+        qWarning() << "[SummaryCache] cacheKey 不匹配,丢弃:" << cacheFile;
+        QFile::remove(cacheFile);
+        return false;
+    }
+
+    QJsonObject r = root["report"].toObject();
+
+    // 用 m_fullReport 暂存,populateFromReport 会从 manager->report() 读
+    m_fullReport = SummaryReport{};
+    m_fullReport.tldr = r["tldr"].toString();
+    m_fullReport.fullMarkdown = r["fullMarkdown"].toString();
+    m_fullReport.videoDurationMs = (qint64)r["videoDurationMs"].toDouble();
+    m_fullReport.generatedAt = QDateTime::fromString(r["generatedAt"].toString(), Qt::ISODate);
+
+    QJsonArray ktArr = r["keyTakeaways"].toArray();
+    for (const QJsonValue& v : ktArr) m_fullReport.keyTakeaways.append(v.toString());
+
+    QJsonArray enArr = r["entities"].toArray();
+    for (const QJsonValue& v : enArr) {
+        QJsonObject e = v.toObject();
+        SummaryEntity ent;
+        ent.name = e["name"].toString();
+        ent.type = e["type"].toString();
+        ent.firstMentionMs = (qint64)e["firstMentionMs"].toDouble();
+        m_fullReport.entities.append(ent);
+    }
+
+    QJsonArray chArr = r["chapters"].toArray();
+    for (const QJsonValue& v : chArr) {
+        QJsonObject c = v.toObject();
+        SummaryChapter ch;
+        ch.startMs = (qint64)c["startMs"].toDouble();
+        ch.endMs = (qint64)c["endMs"].toDouble();
+        ch.title = c["title"].toString();
+        m_fullReport.chapters.append(ch);
+    }
+
+    QJsonArray segArr = r["segments"].toArray();
+    for (const QJsonValue& v : segArr) m_fullReport.segments.append(segmentFromJson(v.toObject()));
+
+    QJsonArray asrArr = r["asrResults"].toArray();
+    for (const QJsonValue& v : asrArr) m_fullReport.asrResults.append(subtitleItemFromJson(v.toObject()));
+
+    m_fullReport.isValid = true;
+
+    // 同步到 m_segments / m_asrResults (用于章节列表高亮等)
+    m_segments = m_fullReport.segments;
+    m_asrResults = m_fullReport.asrResults;
+    m_durationMs = m_fullReport.videoDurationMs;
+
+    qDebug() << "[SummaryCache] 命中:" << cacheFile
+             << "  (" << m_fullReport.chapters.size() << "章,"
+             << m_fullReport.segments.size() << "段)";
+    return true;
+}
+
+void VideoSummaryManager::saveToCache(const QString& videoPath) {
+    if (!ConfigManager::instance().getSummaryCacheEnabled()) return;
+    if (!m_fullReport.isValid) return;
+
+    QString key = ConfigManager::instance().computeVideoCacheKey(videoPath);
+    if (key.isEmpty()) return;
+
+    // 把当前 m_segments / m_asrResults 也塞进 report (确保二次播放能还原章节/字幕)
+    m_fullReport.segments = m_segments;
+    m_fullReport.asrResults = m_asrResults;
+    m_fullReport.videoDurationMs = m_durationMs;
+    m_fullReport.generatedAt = QDateTime::currentDateTime();
+
+    QJsonObject r;
+    r["tldr"] = m_fullReport.tldr;
+    r["fullMarkdown"] = m_fullReport.fullMarkdown;
+    r["videoDurationMs"] = (double)m_fullReport.videoDurationMs;
+    r["generatedAt"] = m_fullReport.generatedAt.toString(Qt::ISODate);
+
+    QJsonArray ktArr;
+    for (const QString& s : m_fullReport.keyTakeaways) ktArr.append(s);
+    r["keyTakeaways"] = ktArr;
+
+    QJsonArray enArr;
+    for (const SummaryEntity& e : m_fullReport.entities) {
+        QJsonObject o;
+        o["name"] = e.name;
+        o["type"] = e.type;
+        o["firstMentionMs"] = (double)e.firstMentionMs;
+        enArr.append(o);
+    }
+    r["entities"] = enArr;
+
+    QJsonArray chArr;
+    for (const SummaryChapter& c : m_fullReport.chapters) {
+        QJsonObject o;
+        o["startMs"] = (double)c.startMs;
+        o["endMs"] = (double)c.endMs;
+        o["title"] = c.title;
+        chArr.append(o);
+    }
+    r["chapters"] = chArr;
+
+    QJsonArray segArr;
+    for (const SummarySegment& s : m_fullReport.segments) segArr.append(segmentToJson(s));
+    r["segments"] = segArr;
+
+    QJsonArray asrArr;
+    for (const SubtitleItem& s : m_fullReport.asrResults) asrArr.append(subtitleItemToJson(s));
+    r["asrResults"] = asrArr;
+
+    QJsonObject root;
+    root["cacheKey"] = key;
+    root["videoPath"] = videoPath;
+    root["schemaVersion"] = 1;
+    root["report"] = r;
+
+    QString cacheFile = ConfigManager::instance().getSummaryCacheDir()
+                        + "/" + key + ".json";
+    QFile f(cacheFile);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        f.close();
+        qDebug() << "[SummaryCache] 已保存:" << cacheFile;
+    } else {
+        qWarning() << "[SummaryCache] 写入失败:" << cacheFile << f.errorString();
+    }
+}
+
+void VideoSummaryManager::clearAllCache() {
+    QString dir = ConfigManager::instance().getSummaryCacheDir();
+    QDir d(dir);
+    int n = 0;
+    for (const QString& f : d.entryList({"*.json"}, QDir::Files)) {
+        if (QFile::remove(d.absoluteFilePath(f))) ++n;
+    }
+    qDebug() << "[SummaryCache] 清空完成,删除" << n << "个文件";
+}
+
+qint64 VideoSummaryManager::cacheTotalSize() {
+    QString dir = ConfigManager::instance().getSummaryCacheDir();
+    QDir d(dir);
+    qint64 total = 0;
+    for (const QFileInfo& fi : d.entryInfoList({"*.json"}, QDir::Files)) {
+        total += fi.size();
+    }
+    return total;
+}
+
+int VideoSummaryManager::cacheFileCount() {
+    QString dir = ConfigManager::instance().getSummaryCacheDir();
+    return QDir(dir).entryList({"*.json"}, QDir::Files).size();
 }

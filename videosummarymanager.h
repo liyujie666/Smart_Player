@@ -48,6 +48,13 @@ public:
 
     void setModel(const QString& model);
 
+    // 缓存
+    bool tryLoadFromCache(const QString& videoPath);
+    void saveToCache(const QString& videoPath);
+    static void clearAllCache();
+    static qint64 cacheTotalSize();
+    static int cacheFileCount();
+
     struct Progress {
         SummaryState stage = SummaryState::Idle;
         double stageProgress = 0.0;

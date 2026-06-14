@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QString>
 #include <QList>
+#include <QFileInfo>
 #include <QCryptographicHash>
 #include <QStandardPaths>
 #include <QDir>
@@ -79,6 +80,15 @@ public:
 
     int getSemanticMaxSegmentMs() const;
     void setSemanticMaxSegmentMs(int ms);
+
+    // 分析结果缓存
+    bool getSummaryCacheEnabled() const;
+    void setSummaryCacheEnabled(bool enabled);
+
+    QString getSummaryCacheDir() const;
+
+    // 视频 -> 稳定缓存 ID (path|size|mtime -> SHA256 截前 16 位)
+    QString computeVideoCacheKey(const QString& videoPath) const;
 
     // Playlist (JSON)
     struct VideoItem {

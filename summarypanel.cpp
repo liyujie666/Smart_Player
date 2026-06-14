@@ -475,6 +475,28 @@ void SummaryPanel::onStartClicked() {
         m_lblStatus->setText(QStringLiteral(u"\u9519\u8bef: \u8bf7\u5148\u6253\u5f00\u8981\u5206\u6790\u7684\u89c6\u9891"));
         return;
     }
+
+    // 先查缓存:命中则直接显示结果,不重跑 LLM/VLM
+    if (m_manager->tryLoadFromCache(m_currentVideoPath)) {
+        populateFromReport(m_manager->report());
+        const SummaryReport& r = m_manager->report();
+        QString when = r.generatedAt.isValid()
+            ? r.generatedAt.toString(QStringLiteral(u"yyyy-MM-dd HH:mm"))
+            : QStringLiteral(u"\u672a\u77e5\u65f6\u95f4");
+        m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u5df2\u4ece\u7f13\u5b58\u52a0\u8f7d (\u5206\u6790\u4e8e %1)").arg(when));
+        if (m_lblMeta) {
+            m_lblMeta->setText(QStringLiteral(u"\u4ece\u7f13\u5b58\u6062\u590d \u00b7 \u5206\u6790\u4e8e %1").arg(when));
+        }
+        m_btnStart->setEnabled(false);
+        m_btnStop->setEnabled(false);
+        m_btnRerun->setEnabled(true);
+        m_btnExport->setEnabled(true);
+        m_cmbModel->setEnabled(false);
+        m_progressBar->setValue(100);
+        m_analysisInProgress = false;
+        return;
+    }
+
     if (m_cmbModel->currentIndex() >= 0) {
         m_manager->setModel(m_cmbModel->currentData().toString());
     }
