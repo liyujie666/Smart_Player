@@ -396,6 +396,79 @@ void SummaryPanel::bindManager(VideoSummaryManager* mgr) {
             this, &SummaryPanel::onErrorOccurred);
 }
 
+void SummaryPanel::setVideoPath(const QString& path) {
+    // 路径未变 → 不动（避免拖动进度条等场景误清空面板）
+    if (path == m_currentVideoPath) return;
+    m_currentVideoPath = path;
+    // 路径变了 → 重置面板到初始占位态。
+    // 旧分析的中断由调用方（MainWindow）负责，此处只负责 UI 状态清理。
+    resetPanelForNewVideo();
+}
+
+void SummaryPanel::resetPanelForNewVideo() {
+    m_analysisInProgress = false;
+    m_currentPositionMs = -1;
+    m_highlightedSegment = -1;
+
+    // TL;DR
+    m_lblTldlr->setText(QStringLiteral(u"未生成分析"));
+    m_lblMeta->clear();
+
+    // 关键要点
+    {
+        QLayoutItem* child;
+        while ((child = m_keyTakeawaysLayout->takeAt(0)) != nullptr) {
+            delete child->widget();
+            delete child;
+        }
+        QLabel* empty = new QLabel(QStringLiteral(u"(\u6682\u65e0)"), this);
+        empty->setStyleSheet(QString::fromLatin1(
+            "QLabel { color: #9CA3AF; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; padding: 8px 4px; }"));
+        m_keyTakeawaysLayout->addWidget(empty);
+    }
+
+    // 章节列表
+    m_segmentList->clear();
+
+    // 实体
+    {
+        QLayoutItem* child;
+        while ((child = m_entitiesContentLayout->takeAt(0)) != nullptr) {
+            delete child->widget();
+            delete child;
+        }
+        QLabel* empty = new QLabel(QStringLiteral(u"(\u6682\u65e0)"), this);
+        empty->setStyleSheet(QString::fromLatin1(
+            "QLabel { color: #9CA3AF; font-size: 12px; font-family: Microsoft YaHei, PingFang SC, sans-serif; padding: 8px 4px; }"));
+        m_entitiesContentLayout->addWidget(empty);
+    }
+    // 同步实体标题栏的计数
+    for (auto obj : findChildren<QLabel*>()) {
+        if (obj->objectName() == QStringLiteral("entitiesTitle")) {
+            obj->setText(m_entitiesExpanded
+                ? QStringLiteral(u"\u25bc \u63d0\u5230\u7684\u6982\u5ff5")
+                : QStringLiteral(u"\u25b7 \u63d0\u5230\u7684\u6982\u5ff5 (0)"));
+            break;
+        }
+    }
+
+    // 字幕
+    m_txtTranscript->clear();
+    m_txtTranscript->setPlaceholderText(QStringLiteral(u"\u5b8c\u6574\u5b57\u5e55\u5c06\u663e\u793a\u5728\u6b64"));
+    m_lineTranscriptSearch->clear();
+
+    // 进度 / 状态
+    m_progressBar->setValue(0);
+    m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u7a7a\u95f2"));
+
+    // 按钮重置（与 onStateChanged(Idle) 的逻辑保持一致）
+    m_btnStart->setEnabled(true);
+    m_btnStop->setEnabled(false);
+    m_btnRerun->setEnabled(false);
+    m_btnExport->setEnabled(false);
+    m_cmbModel->setEnabled(true);
+}
+
 void SummaryPanel::onStartClicked() {
     if (!m_manager) return;
     if (m_currentVideoPath.isEmpty()) {
@@ -436,6 +509,7 @@ void SummaryPanel::onStateChanged(SummaryState state) {
             m_btnExport->setEnabled(false);
             m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u7a7a\u95f2"));
             m_progressBar->setValue(0);
+            m_analysisInProgress = false;
             break;
         case SummaryState::ExtractingFrames:
             m_btnStart->setEnabled(false);
@@ -448,6 +522,7 @@ void SummaryPanel::onStateChanged(SummaryState state) {
             break;
         case SummaryState::AnalyzingSegments:
             m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u5206\u6790\u65f6\u95f4\u6bb5..."));
+            m_analysisInProgress = true;
             break;
         case SummaryState::Stopping:
             m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u6b63\u5728\u505c\u6b62..."));
@@ -468,11 +543,13 @@ void SummaryPanel::onStateChanged(SummaryState state) {
             m_cmbModel->setEnabled(true);
             m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u53d1\u751f\u9519\u8bef"));
             m_progressBar->setValue(0);
+            m_analysisInProgress = false;
             break;
     }
 }
 
 void SummaryPanel::onSegmentAnalyzed(int index, const QString& desc) {
+    if (m_analysisInProgress) return;
     updateSegmentItem(index, desc, true);
 }
 
@@ -488,7 +565,9 @@ void SummaryPanel::onProgressDetailChanged(const VideoSummaryManager::Progress& 
             .arg(progress.totalSegments));
     }
 
-    if (m_segmentList->count() != progress.totalSegments) {
+    // 构建初始 segment 列表骨架（时间范围占位，无描述）
+    // 列表在分析过程中保持空白/骨架态，直到 structuredReportReady 才填入章节标题
+    if (m_segmentList->count() == 0 && progress.totalSegments > 0) {
         rebuildSegmentList();
     }
 
@@ -654,6 +733,10 @@ void SummaryPanel::updateStatusLabel(const VideoSummaryManager::Progress& progre
 }
 
 void SummaryPanel::rebuildSegmentList() {
+    rebuildSegmentList({});
+}
+
+void SummaryPanel::rebuildSegmentList(const QList<SummaryChapter>& chapters) {
     if (!m_manager) return;
 
     m_segmentList->clear();
@@ -666,11 +749,26 @@ void SummaryPanel::rebuildSegmentList() {
             .arg(formatDuration(seg->startMs))
             .arg(formatDuration(seg->endMs));
 
-        QString text;
-        if (seg->isAnalyzed && !seg->description.isEmpty()
+        // 优先从 report 的 chapter 中取标题
+        QString displayTitle;
+        for (const SummaryChapter& ch : chapters) {
+            if (ch.startMs < seg->endMs && ch.endMs > seg->startMs) {
+                if (!ch.title.isEmpty()) {
+                    displayTitle = ch.title;
+                    break;
+                }
+            }
+        }
+        // 其次用 segment 自身的 description
+        if (displayTitle.isEmpty() && seg->isAnalyzed && !seg->description.isEmpty()
             && !seg->description.contains(QStringLiteral(u"(无画面"))
             && !seg->description.contains(QStringLiteral(u"(分析失败"))) {
-            text = QStringLiteral(u"\u25cb %1  %2").arg(timeRange, -14).arg(seg->description);
+            displayTitle = seg->description;
+        }
+
+        QString text;
+        if (!displayTitle.isEmpty()) {
+            text = QStringLiteral(u"\u25cb %1  %2").arg(timeRange, -14).arg(displayTitle);
         } else if (seg->isAnalyzed) {
             text = QStringLiteral(u"\u25cb %1  %2").arg(timeRange, -14).arg(seg->description);
         } else {
@@ -786,6 +884,11 @@ void SummaryPanel::populateFromReport(const SummaryReport& report) {
         m_txtTranscript->setPlainText(lines.join("\n"));
     }
 
+    // Rebuild segment list with chapter titles from report
+    // 解除屏蔽后立即刷新，此时已有章节标题
+    m_analysisInProgress = false;
+    rebuildSegmentList(report.chapters);
+
     // Enable export
     m_btnExport->setEnabled(true);
 }
@@ -832,7 +935,14 @@ void SummaryPanel::exportMarkdown(const SummaryReport& report) {
         md += "\n";
     }
     if (!report.fullMarkdown.isEmpty()) {
-        md += "## \u8be6\u7ec6\u5185\u5bb9\n\n" + report.fullMarkdown + "\n\n";
+        QString cleanMd = report.fullMarkdown;
+        QRegularExpression chapterListRe(
+            QStringLiteral(u"##\\s*章节列表[\\s\\S]*?(?=\\n##\\s|\\Z)"));
+        cleanMd.remove(chapterListRe);
+        cleanMd = cleanMd.trimmed();
+        if (!cleanMd.isEmpty()) {
+            md += "## \u8be6\u7ec6\u5185\u5bb9\n\n" + cleanMd + "\n\n";
+        }
     }
 
     md += QStringLiteral(u"---\n*\u7531 AI \u81ea\u52a8\u751f\u6210 \u00b7 %1*")

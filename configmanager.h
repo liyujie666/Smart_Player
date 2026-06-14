@@ -65,6 +65,21 @@ public:
     int getSummarySegmentDuration() const;
     void setSummarySegmentDuration(int ms);
 
+    bool getSemanticSegmentationEnabled() const;
+    void setSemanticSegmentationEnabled(bool enabled);
+
+    double getSemanticAudioWeight() const;
+    void setSemanticAudioWeight(double w);
+
+    double getSemanticVideoWeight() const;
+    void setSemanticVideoWeight(double w);
+
+    int getSemanticMinSegmentMs() const;
+    void setSemanticMinSegmentMs(int ms);
+
+    int getSemanticMaxSegmentMs() const;
+    void setSemanticMaxSegmentMs(int ms);
+
     // Playlist (JSON)
     struct VideoItem {
         QString path;

@@ -53,6 +53,8 @@ public:
     void setModel(const QString& model);
     void abortAll();
 
+    QNetworkAccessManager* ensureNetworkManager();
+
     void analyzeFrame(int segmentIndex,
                       const QByteArray& jpegData,
                       const QString& speechContext,
@@ -63,6 +65,10 @@ public:
 signals:
     void frameAnalyzed(int segmentIndex, const QString& description, bool hasError, const QString& errorMsg);
     void reportReady(const QString& reportJson, bool hasError, const QString& errorMsg);
+    void sceneClassified(qint64 timestampMs, const QString& sceneTag, bool hasError, const QString& errorMsg);
+
+public slots:
+    void classifySingleScene(qint64 timestampMs, const QByteArray& jpegData);
 
 private:
     void postJson(const QString& endpoint,
@@ -77,7 +83,8 @@ private:
     QString m_apiKey;
     QString m_baseUrl = QStringLiteral(u"https://dashscope.aliyuncs.com/compatible-mode/v1");
     QString m_model = QStringLiteral(u"qwen-vl-plus");
-    QSemaphore m_semaphore{5};
+    QList<QNetworkReply*> m_pendingReplies;
+    QSemaphore m_concurrencyLimit{5};
 };
 
 class SummaryNetworkBridge : public QObject {
@@ -94,6 +101,9 @@ public slots:
     void generateFullReport(const QList<SummarySegment>& segments,
                            const QList<SubtitleItem>& asrResults) {
         m_client->generateFullReportOnNetworkThread(segments, asrResults);
+    }
+    void classifySingleScene(qint64 timestampMs, const QByteArray& jpegData) {
+        m_client->classifySingleScene(timestampMs, jpegData);
     }
 
 private:

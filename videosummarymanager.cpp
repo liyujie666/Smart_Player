@@ -1,5 +1,6 @@
 #include "videosummarymanager.h"
 #include "videosummarysegmenter.h"
+#include "semanticsegmenter.h"
 #include "subtitle/asrworker.h"
 #include "demuxer/demuxer.h"
 #include "decoder/decoder.h"
@@ -66,8 +67,20 @@ void VideoSummaryManager::startSummary(const QString& videoPath) {
     m_extractedFrames.clear();
     cleanupTempFiles();
 
+    // 把 m_networkClient 和 this 放到主线程上,作为 moveToThread(worker) 之前
+    // 的 "干净起点" 兜底。正常路径下 stopSummary 已经把它们拉回主线程了;
+    // 这一行是双保险,处理 stopSummary 被绕过等边界情况。
+    QThread* mainThread = QCoreApplication::instance()->thread();
+    if (m_networkClient->thread() != mainThread) {
+        m_networkClient->moveToThread(mainThread);
+    }
+    if (this->thread() != mainThread) {
+        moveToThread(mainThread);
+    }
+
     m_workerThread = new QThread(this);
     m_networkBridge = new SummaryNetworkBridge(m_networkClient, m_workerThread);
+    m_networkClient->moveToThread(m_workerThread);
     moveToThread(m_workerThread);
     m_workerThread->start();
 
@@ -81,18 +94,27 @@ void VideoSummaryManager::stopSummary() {
     }
 
     m_stopRequested = true;
+    m_sceneStopRequested = true;
     setState(SummaryState::Stopping);
     m_networkClient->abortAll();
 
     cleanupTempFiles();
 
     if (m_workerThread && m_workerThread->isRunning()) {
+        // 在 delete QThread 之前,先把亲和性在 worker 线程上的对象
+        // (m_networkClient 和 this) move 回主线程。否则 QThread 析构时
+        // 会把它们的 thread() 置为 nullptr,导致下次 startSummary 时
+        // moveToThread 报 "Current thread ... is not the object's thread (0x0)"。
+        if (m_networkClient) m_networkClient->moveToThread(QCoreApplication::instance()->thread());
+        this->moveToThread(QCoreApplication::instance()->thread());
+
         m_workerThread->quit();
         m_workerThread->wait(3000);
+        // m_networkBridge 是以 m_workerThread 为父对象创建的,delete m_workerThread
+        // 时 Qt 会自动 delete bridge。手动 delete 会 double-free 导致崩溃。
         delete m_workerThread;
         m_workerThread = nullptr;
-        delete m_networkBridge;
-        m_networkBridge = nullptr;
+        m_networkBridge = nullptr;   // 已被 Qt 自动 delete,仅置空指针
     }
 
     setState(SummaryState::Idle);
@@ -118,14 +140,22 @@ VideoSummaryManager::Progress VideoSummaryManager::progress() const {
             p.overallProgress = 0.0;
             break;
         case SummaryState::ExtractingFrames: {
-            int totalFrames = qMax(1, m_segments.size() * 2);
+            int totalFrames = qMax(1, m_segments.isEmpty() ? qMax(1, int(m_durationMs / 2500)) : m_segments.size() * 2);
             p.stageProgress = m_extractedFrames.size() / static_cast<double>(totalFrames);
-            p.overallProgress = p.stageProgress * 0.3;
+            p.overallProgress = p.stageProgress * 0.2;
             break;
         }
         case SummaryState::RunningASR:
             p.stageProgress = 0.5;
-            p.overallProgress = 0.3 + p.stageProgress * 0.1;
+            p.overallProgress = 0.2 + p.stageProgress * 0.1;
+            break;
+        case SummaryState::ClassifyingScenes:
+            p.stageProgress = 0.5;
+            p.overallProgress = 0.3 + p.stageProgress * 0.05;
+            break;
+        case SummaryState::DetectingSemanticBoundaries:
+            p.stageProgress = 0.5;
+            p.overallProgress = 0.35 + p.stageProgress * 0.05;
             break;
         case SummaryState::AnalyzingSegments:
             if (m_segments.isEmpty()) {
@@ -150,6 +180,181 @@ VideoSummaryManager::Progress VideoSummaryManager::progress() const {
     return p;
 }
 
+void VideoSummaryManager::classifyVideoScenes() {
+    const int SAMPLE_INTERVAL_MS = 15000;
+
+    QList<QPair<qint64, QByteArray>> sampleFrames;
+    for (qint64 ts = 0; ts < m_durationMs; ts += SAMPLE_INTERVAL_MS) {
+        auto it = m_extractedFrames.lowerBound(ts);
+        if (it != m_extractedFrames.end()) {
+            sampleFrames.append({it.key(), it.value()});
+        }
+    }
+
+    if (sampleFrames.isEmpty()) {
+        qDebug() << "[Summary] 无帧可做场景分类";
+        return;
+    }
+
+    m_sceneTags.clear();
+    m_pendingSceneClassifications = sampleFrames.size();
+    m_sceneStopRequested = false;
+
+    connect(m_networkClient, &SummaryNetworkClient::sceneClassified,
+            this, &VideoSummaryManager::onSceneClassified);
+
+    for (const auto& frame : sampleFrames) {
+        if (m_sceneStopRequested) break;
+        QMetaObject::invokeMethod(m_networkBridge, "classifySingleScene",
+            Qt::QueuedConnection,
+            Q_ARG(qint64, frame.first),
+            Q_ARG(QByteArray, frame.second));
+    }
+
+    while (m_pendingSceneClassifications > 0 && !m_sceneStopRequested) {
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+    }
+
+    disconnect(m_networkClient, &SummaryNetworkClient::sceneClassified,
+               this, &VideoSummaryManager::onSceneClassified);
+
+    std::sort(m_sceneTags.begin(), m_sceneTags.end(),
+               [](const QPair<qint64, QString>& a, const QPair<qint64, QString>& b) {
+                   return a.first < b.first;
+               });
+
+    m_sceneTags = debounceSceneTags(m_sceneTags);
+
+    for (const auto& tag : m_sceneTags) {
+        qDebug() << "[Summary] 场景标签:" << tag.first << "ms ->" << tag.second;
+    }
+}
+
+void VideoSummaryManager::onSceneClassified(qint64 timestampMs, const QString& sceneTag,
+                                           bool hasError, const QString& errorMsg) {
+    QMutexLocker locker(&m_sceneMutex);
+    if (hasError) {
+        qDebug() << "[Summary] 场景分类失败" << timestampMs << "ms:" << errorMsg;
+        m_sceneTags.append({timestampMs, QString()});
+    } else {
+        m_sceneTags.append({timestampMs, sceneTag});
+    }
+    if (--m_pendingSceneClassifications == 0) {
+        m_sceneCond.wakeAll();
+    }
+}
+
+QList<QPair<qint64, QString>> VideoSummaryManager::debounceSceneTags(
+    const QList<QPair<qint64, QString>>& rawTags) {
+    if (rawTags.size() < 3) {
+        return rawTags;
+    }
+
+    // 第 1 步：空标签填补 (失败帧用最近的非空标签)
+    QList<QPair<qint64, QString>> filled;
+    filled.reserve(rawTags.size());
+    QString lastNonEmpty;
+    for (const auto& p : rawTags) {
+        if (p.second.isEmpty()) {
+            if (!lastNonEmpty.isEmpty()) {
+                filled.append({p.first, lastNonEmpty});
+            } else {
+                filled.append(p);
+            }
+        } else {
+            filled.append(p);
+            lastNonEmpty = p.second;
+        }
+    }
+    // 尾部可能仍为空（开头就失败），用首个非空填补
+    QString firstNonEmpty;
+    for (const auto& p : filled) {
+        if (!p.second.isEmpty()) { firstNonEmpty = p.second; break; }
+    }
+    if (!firstNonEmpty.isEmpty()) {
+        for (auto& p : filled) {
+            if (p.second.isEmpty()) p.second = firstNonEmpty;
+        }
+    }
+
+    // 第 2 步：中值滤波 (前后各 K 帧的众数)
+    const int K = 2;
+    QList<QPair<qint64, QString>> smoothed;
+    smoothed.reserve(filled.size());
+    for (int i = 0; i < filled.size(); ++i) {
+        QHash<QString, int> counter;
+        int lo = qMax(0, i - K);
+        int hi = qMin(filled.size() - 1, i + K);
+        for (int j = lo; j <= hi; ++j) {
+            const QString& t = filled[j].second;
+            if (!t.isEmpty()) counter[t]++;
+        }
+        QString best;
+        int bestCount = 0;
+        for (auto it = counter.constBegin(); it != counter.constEnd(); ++it) {
+            if (it.value() > bestCount) {
+                best = it.key();
+                bestCount = it.value();
+            }
+        }
+        if (best.isEmpty()) best = filled[i].second;
+        smoothed.append({filled[i].first, best});
+    }
+
+    // 第 3 步：最小停留时长去抖 (单点新标签视为噪声)
+    // 找出所有"稳定段"，单帧段被两侧的稳定标签吸收
+    QList<QPair<qint64, QString>> debounced = smoothed;
+    for (int i = 1; i < debounced.size() - 1; ++i) {
+        if (debounced[i].second != debounced[i - 1].second
+            && debounced[i].second != debounced[i + 1].second
+            && debounced[i - 1].second == debounced[i + 1].second) {
+            debounced[i].second = debounced[i - 1].second;
+        }
+    }
+
+    qDebug() << "[Summary] 场景标签去抖: 原始" << rawTags.size()
+             << "个, 去抖后" << debounced.size() << "个";
+
+    int beforeChanges = 0;
+    for (int i = 1; i < smoothed.size(); ++i) {
+        if (smoothed[i].second != smoothed[i - 1].second) ++beforeChanges;
+    }
+    int afterChanges = 0;
+    for (int i = 1; i < debounced.size(); ++i) {
+        if (debounced[i].second != debounced[i - 1].second) ++afterChanges;
+    }
+    qDebug() << "[Summary] 场景切换次数: 去抖前" << beforeChanges
+             << "次, 去抖后" << afterChanges << "次";
+
+    return debounced;
+}
+
+void VideoSummaryManager::runSemanticSegmentation() {
+    SemanticSegmenter segmenter;
+    SemanticSegmenter::Config segCfg;
+
+    segCfg.audioWeight = ConfigManager::instance().getSemanticAudioWeight();
+    segCfg.videoWeight = ConfigManager::instance().getSemanticVideoWeight();
+    segCfg.minSegmentMs = ConfigManager::instance().getSemanticMinSegmentMs();
+    segCfg.maxSegmentMs = ConfigManager::instance().getSemanticMaxSegmentMs();
+
+    segmenter.setConfig(segCfg);
+
+    QList<qint64> boundaries = segmenter.computeSegments(
+        m_asrResults, m_durationMs, m_sceneTags);
+
+    SemanticSegmenter::boundariesToSegments(boundaries, m_segments);
+
+    qDebug() << "[Summary] 语义分段边界:" << boundaries;
+    qDebug() << "[Summary] 检测到的边界详情:";
+    for (const auto& sb : segmenter.allBoundaries()) {
+        qDebug() << "  ->" << sb.timestampMs << "ms"
+                 << "audio=" << sb.audioScore
+                 << "video=" << sb.videoScore
+                 << "reason:" << sb.audioReason << sb.videoReason;
+    }
+}
+
 const SummarySegment* VideoSummaryManager::segmentAt(int index) const {
     if (index < 0 || index >= m_segments.size()) return nullptr;
     return &m_segments[index];
@@ -158,10 +363,8 @@ const SummarySegment* VideoSummaryManager::segmentAt(int index) const {
 void VideoSummaryManager::runAnalysis() {
     qDebug() << "[Summary] 开始分析:" << m_videoPath;
 
-    // 获取视频时长
     Demuxer durationProbe;
     if (durationProbe.open(m_videoPath.toStdString().c_str()) >= 0) {
-        // getDuration() 返回秒，转为毫秒
         m_durationMs = durationProbe.getDuration() * 1000;
         qDebug() << "[Summary] 视频时长:" << m_durationMs << "ms (" << (m_durationMs / 1000) << "s)";
         durationProbe.close();
@@ -173,15 +376,10 @@ void VideoSummaryManager::runAnalysis() {
         return;
     }
 
-    int segDuration = ConfigManager::instance().getSummarySegmentDuration();
-    qDebug() << "[Summary] 分段时长:" << segDuration << "ms";
-    m_segments = SummarySegmenter::segmentByDuration(m_durationMs, segDuration);
-    qDebug() << "[Summary] 分段数量:" << m_segments.size() << "段";
-
     setState(SummaryState::ExtractingFrames);
     emit progressDetailChanged(progress());
 
-    qDebug() << "[Summary] 阶段: 提取关键帧, 共需提取" << (m_segments.size() * 2) << "帧";
+    qDebug() << "[Summary] 阶段: 提取关键帧";
     extractFrames();
     qDebug() << "[Summary] 帧提取完成, 成功提取" << m_extractedFrames.size() << "帧";
     if (m_stopRequested) return;
@@ -202,6 +400,43 @@ void VideoSummaryManager::runAnalysis() {
     }
 
     if (m_stopRequested) return;
+
+    bool useSemanticSeg = ConfigManager::instance().getSemanticSegmentationEnabled();
+    int asrCount = m_asrResults.size();
+    int sceneTagCount = m_sceneTags.size();
+    qDebug() << "[Summary] === 分段决策诊断 ===";
+    qDebug() << "[Summary] 语义分段开关:" << useSemanticSeg;
+    qDebug() << "[Summary] ASR 语音条数:" << asrCount;
+    qDebug() << "[Summary] 场景标签数:" << sceneTagCount;
+    qDebug() << "[Summary] 固定分段时长设置:" << ConfigManager::instance().getSummarySegmentDuration() << "ms";
+    qDebug() << "[Summary] 语义最小段长:" << ConfigManager::instance().getSemanticMinSegmentMs() << "ms";
+    qDebug() << "[Summary] 语义最大段长:" << ConfigManager::instance().getSemanticMaxSegmentMs() << "ms";
+    qDebug() << "[Summary] 音频权重:" << ConfigManager::instance().getSemanticAudioWeight();
+    qDebug() << "[Summary] 视频权重:" << ConfigManager::instance().getSemanticVideoWeight();
+
+    if (useSemanticSeg && !m_asrResults.isEmpty()) {
+        setState(SummaryState::ClassifyingScenes);
+        emit progressDetailChanged(progress());
+        qDebug() << "[Summary] 阶段: VLM 批量场景分类";
+        classifyVideoScenes();
+        qDebug() << "[Summary] 场景分类完成, 获取到" << m_sceneTags.size() << "个场景标签";
+        if (m_stopRequested) return;
+
+        setState(SummaryState::DetectingSemanticBoundaries);
+        emit progressDetailChanged(progress());
+        qDebug() << "[Summary] 阶段: 语义边界检测与分段";
+        runSemanticSegmentation();
+        qDebug() << "[Summary] 语义分段完成, 共" << m_segments.size() << "段";
+    } else {
+        if (m_asrResults.isEmpty()) {
+            qDebug() << "[Summary] 无语音数据，降级为固定时长分段";
+        } else {
+            qDebug() << "[Summary] 语义分段未启用，使用固定时长分段";
+        }
+        int segDuration = ConfigManager::instance().getSummarySegmentDuration();
+        m_segments = SummarySegmenter::segmentByDuration(m_durationMs, segDuration);
+        qDebug() << "[Summary] 固定分段完成, 共" << m_segments.size() << "段, 每段" << segDuration << "ms";
+    }
 
     if (!m_asrResults.isEmpty()) {
         SummarySegmenter::aggregateSpeechText(m_segments, m_asrResults);
@@ -228,9 +463,9 @@ void VideoSummaryManager::runAnalysis() {
 }
 
 void VideoSummaryManager::extractFrames() {
-    if (m_segments.isEmpty()) return;
+    const int FRAME_INTERVAL_MS = 2500;
+    int totalFramesNeeded = qMax(1, int(m_durationMs / FRAME_INTERVAL_MS));
 
-    int totalFramesNeeded = m_segments.size() * 2;
     for (int i = 0; i < totalFramesNeeded; ++i) {
         if (m_stopRequested) return;
 

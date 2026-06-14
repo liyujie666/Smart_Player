@@ -6,12 +6,19 @@
 #include <QUrl>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QTimer>
 #include <QDebug>
 
 SummaryNetworkClient::SummaryNetworkClient(QObject* parent)
     : QObject(parent)
-    , m_nam(new QNetworkAccessManager(this))
 {
+}
+
+QNetworkAccessManager* SummaryNetworkClient::ensureNetworkManager() {
+    if (!m_nam) {
+        m_nam = new QNetworkAccessManager(this);
+    }
+    return m_nam;
 }
 
 SummaryNetworkClient::~SummaryNetworkClient() {
@@ -31,8 +38,10 @@ void SummaryNetworkClient::setModel(const QString& model) {
 }
 
 void SummaryNetworkClient::abortAll() {
-    m_semaphore.release(5);
-    m_semaphore.acquire(5);
+    for (QNetworkReply* reply : std::as_const(m_pendingReplies)) {
+        if (reply) reply->abort();
+    }
+    m_pendingReplies.clear();
 }
 
 void SummaryNetworkClient::postJson(const QString& endpoint,
@@ -44,12 +53,17 @@ void SummaryNetworkClient::postJson(const QString& endpoint,
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     req.setRawHeader("Authorization", "Bearer " + m_apiKey.toUtf8());
 
-    m_semaphore.acquire();
-    QNetworkReply* reply = m_nam->post(req, QJsonDocument(body).toJson());
+    QNetworkReply* reply = ensureNetworkManager()->post(req, QJsonDocument(body).toJson());
+    m_pendingReplies.append(reply);
 
     connect(reply, &QNetworkReply::finished, this, [=]() {
-        if (reply->error() != QNetworkReply::NoError
-            && reply->error() != QNetworkReply::OperationCanceledError) {
+        m_pendingReplies.removeAll(reply);
+        if (reply->error() == QNetworkReply::OperationCanceledError) {
+            // abortAll 主动取消:不调 onDone (resp 为空会越界),不调 onError
+            reply->deleteLater();
+            return;
+        }
+        if (reply->error() != QNetworkReply::NoError) {
             onError(reply->errorString());
         } else {
             QJsonObject resp = QJsonDocument::fromJson(reply->readAll()).object();
@@ -60,7 +74,6 @@ void SummaryNetworkClient::postJson(const QString& endpoint,
             }
         }
         reply->deleteLater();
-        m_semaphore.release();
     });
 }
 
@@ -223,11 +236,15 @@ void SummaryNetworkClient::generateFullReportOnNetworkThread(const QList<Summary
         u"  ],\n"
         u"  \"markdown\": \"完整的 Markdown 格式报告，包含 TL;DR、关键要点、章节列表和详细内容\"\n"
         u"}\n\n"
-        u"要求：\n"
+        u"【硬性约束 - 章节时间戳】\n"
+        u"- chapters 的个数必须等于下方提供的\"时间段\"个数 (下面会列出 N 个段，你必须输出 N 个 chapter)\n"
+        u"- 每个 chapter 的 start/end 必须与对应时间段的起止时间戳完全一致 (MM:SS 格式)\n"
+        u"- 不允许把一个时间段拆成多个 chapter，也不允许把多个时间段合并成一个\n"
+        u"- 章节标题(title)要简短精炼 (10-20 字)，概括该时间段的核心内容\n\n"
+        u"其他要求：\n"
         u"- tldr 不超过60字\n"
         u"- key_takeaways 提取3-5条最重要的观点\n"
         u"- entities 最多提取10个重要概念/人物，first_mention 格式为 MM:SS（首次出现时间）\n"
-        u"- chapters 按时间顺序列出章节，章节数不超过15个\n"
         u"- markdown 是一份完整可读的 Markdown 报告"
     );
 
@@ -249,7 +266,7 @@ void SummaryNetworkClient::generateFullReportOnNetworkThread(const QList<Summary
     body["messages"] = QJsonArray({systemContent, userContent});
 
     postJson("/chat/completions", body,
-        [this](const QJsonObject& resp) {
+        [this, segments](const QJsonObject& resp) {
             QString rawContent = resp["choices"].toArray()[0]
                 .toObject()["message"].toObject()
                 ["content"].toString();
@@ -281,6 +298,54 @@ void SummaryNetworkClient::generateFullReportOnNetworkThread(const QList<Summary
                 return;
             }
 
+            {
+                QJsonArray llmChapters = obj["chapters"].toArray();
+                QJsonArray segArr;
+                for (const auto& seg : segments) {
+                    QJsonObject s;
+                    s["start"] = QStringLiteral(u"%1:%2")
+                        .arg(seg.startMs / 60000, 2, 10, QChar('0'))
+                        .arg((seg.startMs % 60000) / 1000, 2, 10, QChar('0'));
+                    s["end"] = QStringLiteral(u"%1:%2")
+                        .arg(seg.endMs / 60000, 2, 10, QChar('0'))
+                        .arg((seg.endMs % 60000) / 1000, 2, 10, QChar('0'));
+                    s["title"] = QString();
+                    segArr.append(s);
+                }
+
+                auto copyTitleIfAny = [&](int i) {
+                    if (i < 0 || i >= segArr.size() || i >= llmChapters.size()) return;
+                    QJsonObject segObj = segArr[i].toObject();
+                    QString title = llmChapters[i].toObject()["title"].toString();
+                    if (!title.isEmpty()) {
+                        segObj["title"] = title;
+                    }
+                    segArr.replace(i, segObj);
+                };
+
+                if (llmChapters.size() != segments.size()) {
+                    qWarning() << "[Summary] LLM 章节数不匹配 segments (LLM:"
+                               << llmChapters.size() << ", segments:" << segments.size()
+                               << "), 强制使用 segment 时间戳";
+                }
+                for (int i = 0; i < segArr.size(); ++i) copyTitleIfAny(i);
+                obj["chapters"] = segArr;
+
+                {
+                    QJsonArray sb;
+                    for (int i = 0; i < segArr.size(); ++i) {
+                        QJsonObject c = segArr[i].toObject();
+                        QString line = QStringLiteral(u"- [%1 - %2] %3")
+                            .arg(c["start"].toString(), c["end"].toString(),
+                                 c["title"].toString().isEmpty()
+                                    ? QStringLiteral(u"第 %1 段").arg(i + 1)
+                                    : c["title"].toString());
+                        sb.append(line);
+                    }
+                    obj["chapter_timeline"] = sb;
+                }
+            }
+
             SummaryReport report = parseReportJson(obj);
             QJsonDocument outDoc;
             outDoc.setObject(obj);
@@ -288,5 +353,64 @@ void SummaryNetworkClient::generateFullReportOnNetworkThread(const QList<Summary
         },
         [this](const QString& err) {
             emit reportReady(QString(), true, err);
+        });
+}
+
+void SummaryNetworkClient::classifySingleScene(qint64 timestampMs, const QByteArray& jpegData) {
+    if (!m_concurrencyLimit.tryAcquire()) {
+        QTimer::singleShot(100, this, [this, timestampMs, jpegData]() {
+            classifySingleScene(timestampMs, jpegData);
+        });
+        return;
+    }
+
+    QString prompt = QStringLiteral(
+        u"请用 1-3 个英文单词描述这个画面的场景类型，"
+        u"如：outdoor_talking / code_demo / slide_presentation / "
+        u"product_shot / crowd_scene / screen_recording / "
+        u"driving_view / indoor_meeting / cooking_scene / "
+        u"sports_action / music_performance。\n\n"
+        u"只返回场景标签（如 outdoor_talking），不要其他任何内容。"
+    );
+
+    QString imageBase64 = QString::fromLatin1(jpegData.toBase64());
+
+    QJsonObject userContent;
+    userContent["role"] = "user";
+    QJsonArray contentArray;
+    contentArray.append(QJsonObject{
+        {"type", "text"},
+        {"text", prompt}
+    });
+    contentArray.append(QJsonObject{
+        {"type", "image_url"},
+        {"image_url", QJsonObject{
+            {"url", "data:image/jpeg;base64," + imageBase64}
+        }}
+    });
+    userContent["content"] = contentArray;
+
+    QJsonObject body;
+    body["model"] = m_model;
+    body["messages"] = QJsonArray({userContent});
+
+    postJson("/chat/completions", body,
+        [this, timestampMs](const QJsonObject& resp) {
+            QJsonArray choices = resp["choices"].toArray();
+            if (choices.isEmpty()) {
+                qWarning() << "[Summary] classifySingleScene: 空 choices,timestampMs=" << timestampMs;
+                m_concurrencyLimit.release();
+                emit sceneClassified(timestampMs, QString(), true,
+                                     QStringLiteral("empty choices from API"));
+                return;
+            }
+            QString content = choices[0].toObject()["message"].toObject()
+                              ["content"].toString();
+            m_concurrencyLimit.release();
+            emit sceneClassified(timestampMs, content.trimmed(), false, QString());
+        },
+        [this, timestampMs](const QString& err) {
+            m_concurrencyLimit.release();
+            emit sceneClassified(timestampMs, QString(), true, err);
         });
 }

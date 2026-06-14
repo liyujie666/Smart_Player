@@ -34,6 +34,11 @@ ConfigManager::ConfigManager()
     }
     if (!settings_->contains("summary/segmentDuration")) settings_->setValue("summary/segmentDuration", 5000);
     if (!settings_->contains("summary/model")) settings_->setValue("summary/model", "qwen-vl-plus");
+    if (!settings_->contains("summary/semanticEnabled")) settings_->setValue("summary/semanticEnabled", false);
+    if (!settings_->contains("summary/semanticAudioWeight")) settings_->setValue("summary/semanticAudioWeight", 0.6);
+    if (!settings_->contains("summary/semanticVideoWeight")) settings_->setValue("summary/semanticVideoWeight", 0.4);
+    if (!settings_->contains("summary/semanticMinSegmentMs")) settings_->setValue("summary/semanticMinSegmentMs", 3000);
+    if (!settings_->contains("summary/semanticMaxSegmentMs")) settings_->setValue("summary/semanticMaxSegmentMs", 120000);
 
     QDir().mkpath(getThumbnailDir());
 }
@@ -293,4 +298,56 @@ int ConfigManager::getSummarySegmentDuration() const
 void ConfigManager::setSummarySegmentDuration(int ms)
 {
     settings_->setValue("summary/segmentDuration", ms);
+}
+
+bool ConfigManager::getSemanticSegmentationEnabled() const
+{
+    return settings_->value("summary/semanticEnabled", false).toBool();
+}
+
+void ConfigManager::setSemanticSegmentationEnabled(bool enabled)
+{
+    settings_->setValue("summary/semanticEnabled", enabled);
+}
+
+double ConfigManager::getSemanticAudioWeight() const
+{
+    return settings_->value("summary/semanticAudioWeight", 0.6).toDouble();
+}
+
+void ConfigManager::setSemanticAudioWeight(double w)
+{
+    settings_->setValue("summary/semanticAudioWeight", w);
+    settings_->setValue("summary/semanticVideoWeight", 1.0 - w);
+}
+
+double ConfigManager::getSemanticVideoWeight() const
+{
+    return settings_->value("summary/semanticVideoWeight", 0.4).toDouble();
+}
+
+void ConfigManager::setSemanticVideoWeight(double w)
+{
+    settings_->setValue("summary/semanticVideoWeight", w);
+    settings_->setValue("summary/semanticAudioWeight", 1.0 - w);
+}
+
+int ConfigManager::getSemanticMinSegmentMs() const
+{
+    return settings_->value("summary/semanticMinSegmentMs", 3000).toInt();
+}
+
+void ConfigManager::setSemanticMinSegmentMs(int ms)
+{
+    settings_->setValue("summary/semanticMinSegmentMs", ms);
+}
+
+int ConfigManager::getSemanticMaxSegmentMs() const
+{
+    return settings_->value("summary/semanticMaxSegmentMs", 120000).toInt();
+}
+
+void ConfigManager::setSemanticMaxSegmentMs(int ms)
+{
+    settings_->setValue("summary/semanticMaxSegmentMs", ms);
 }

@@ -6,6 +6,7 @@
 #include <QSpinBox>
 #include <QLabel>
 #include <QComboBox>
+#include <QCheckBox>
 
 namespace Ui {
 class settingDialog;
@@ -47,6 +48,7 @@ private slots:
     void on_summaryEndpointChanged(const QString& text);
     void on_summarySegmentDurationChanged(int value);
     void on_summaryModelChanged(const QString& model);
+    void on_summarySemanticSegChanged(bool checked);
 
 signals:
     void startHardWareAccep(bool on);
@@ -74,6 +76,7 @@ private:
     QSpinBox* m_summarySegmentDurationSpin = nullptr;
     QLabel* m_summarySegmentDurationLabel = nullptr;
     QComboBox* m_summaryModelCombo = nullptr;
+    QCheckBox* m_summarySemanticSegCheck = nullptr;
 };
 
 #endif // SETTINGDIALOG_H

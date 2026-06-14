@@ -15,6 +15,7 @@ SOURCES += \
     videosummarymanager.cpp \
     videosummarysegmenter.cpp \
     videosummarynetworkclient.cpp \
+    semanticsegmenter.cpp \
     subtitle/asrmanager.cpp \
     subtitle/asrofflinestrategy.cpp \
     subtitle/asrrealtimestrategy.cpp \
@@ -54,6 +55,7 @@ HEADERS += \
     videosummarymanager.h \
     videosummarysegmenter.h \
     videosummarynetworkclient.h \
+    semanticsegmenter.h \
     subtitle/asrmanager.h \
     subtitle/asrofflinestrategy.h \
     subtitle/asrrealtimestrategy.h \

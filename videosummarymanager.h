@@ -6,6 +6,7 @@
 #include <QMutex>
 #include <QWaitCondition>
 #include <QEventLoop>
+#include <QSemaphore>
 #include <atomic>
 #include <QString>
 #include <QList>
@@ -14,13 +15,14 @@
 #include <QStringList>
 #include "videosummarynetworkclient.h"
 #include "queue/subtitlequeue.h"
-
-class SummarySegmenter;
+#include "semanticsegmenter.h"
 
 enum class SummaryState {
     Idle,
     ExtractingFrames,
     RunningASR,
+    ClassifyingScenes,
+    DetectingSemanticBoundaries,
     AnalyzingSegments,
     Stopping,
     Finished,
@@ -68,6 +70,10 @@ signals:
 private:
     void extractFrames();
     void runWhisperASR(const QString& audioPath);
+    void classifyVideoScenes();
+    QList<QPair<qint64, QString>> debounceSceneTags(
+        const QList<QPair<qint64, QString>>& rawTags);
+    void runSemanticSegmentation();
     void analyzeSegments();
     void generateFullReport();
 
@@ -81,6 +87,8 @@ private slots:
     void runAnalysis();
     void onFrameAnalyzed(int segmentIndex, const QString& description,
                          bool hasError, const QString& errorMsg);
+    void onSceneClassified(qint64 timestampMs, const QString& sceneTag,
+                           bool hasError, const QString& errorMsg);
     void onReportReady(const QString& reportJson, bool hasError, const QString& errorMsg);
 
 private:
@@ -93,6 +101,7 @@ private:
     SummaryReport m_fullReport;
 
     QMap<qint64, QByteArray> m_extractedFrames;
+    QList<QPair<qint64, QString>> m_sceneTags;
 
     QMutex m_mutex;
     QWaitCondition m_analysisDone;
@@ -100,7 +109,7 @@ private:
     std::atomic<int> m_currentSegment{0};
 
     int m_pendingAnalyzes = 0;
-    QList<QString> m_pendingFrameDescs;
+    QStringList m_pendingFrameDescs;
     bool m_pendingHasError = false;
     QString m_pendingErrorMsg;
     QString m_pendingReport;
@@ -109,6 +118,11 @@ private:
     QWaitCondition m_pendingCond;
     QEventLoop* m_reportLoop = nullptr;
     QEventLoop* m_analysisLoop = nullptr;
+
+    int m_pendingSceneClassifications = 0;
+    QMutex m_sceneMutex;
+    QWaitCondition m_sceneCond;
+    std::atomic<bool> m_sceneStopRequested{false};
 
     SummaryNetworkClient* m_networkClient = nullptr;
     SummaryNetworkBridge* m_networkBridge = nullptr;

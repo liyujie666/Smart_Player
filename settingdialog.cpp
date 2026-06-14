@@ -149,6 +149,25 @@ settingDialog::settingDialog(QWidget *parent)
         segmentRow->addWidget(m_summarySegmentDurationLabel);
         segmentRow->addStretch();
         mainLayout->addLayout(segmentRow);
+
+        // 语义智能分段开关行
+        QHBoxLayout* semanticRow = new QHBoxLayout();
+        QLabel* semanticLabel = new QLabel(QStringLiteral(u"语义智能分段:"), this);
+        semanticLabel->setStyleSheet(QString::fromLatin1("QLabel { color: white; font-size: 13px; }"));
+        semanticLabel->setFixedWidth(80);
+        m_summarySemanticSegCheck = new QCheckBox(this);
+        m_summarySemanticSegCheck->setStyleSheet(QString::fromLatin1(
+            "QCheckBox { color: white; font-size: 13px; }"));
+        m_summarySemanticSegCheck->setChecked(cfg.getSemanticSegmentationEnabled());
+        QLabel* semanticTip = new QLabel(
+            QStringLiteral(u"根据语音语义和画面场景自动分段，效果更佳"), this);
+        semanticTip->setStyleSheet(QString::fromLatin1(
+            "QLabel { color: #888; font-size: 11px; }"));
+        semanticRow->addWidget(semanticLabel);
+        semanticRow->addWidget(m_summarySemanticSegCheck);
+        semanticRow->addWidget(semanticTip);
+        semanticRow->addStretch();
+        mainLayout->addLayout(semanticRow);
     }
 
     // 扩大对话框高度以容纳新控件
@@ -163,6 +182,8 @@ settingDialog::settingDialog(QWidget *parent)
             this, &settingDialog::on_summarySegmentDurationChanged);
     connect(m_summaryModelCombo, &QComboBox::currentTextChanged,
             this, &settingDialog::on_summaryModelChanged);
+    connect(m_summarySemanticSegCheck, &QCheckBox::toggled,
+            this, &settingDialog::on_summarySemanticSegChanged);
 
     connect(group2, &QButtonGroup::buttonClicked, this, [=](QAbstractButton* button){
         int id = group2->id(button);
@@ -267,6 +288,7 @@ void settingDialog::on_confirmBtn_clicked()
     if (m_summaryEndpointLine) cfg.setSummaryModelEndpoint(m_summaryEndpointLine->text().trimmed());
     if (m_summarySegmentDurationSpin) cfg.setSummarySegmentDuration(m_summarySegmentDurationSpin->value());
     if (m_summaryModelCombo) cfg.setSummaryModel(m_summaryModelCombo->currentData().toString());
+    if (m_summarySemanticSegCheck) cfg.setSemanticSegmentationEnabled(m_summarySemanticSegCheck->isChecked());
     cfg.save();
     accept();
 }
@@ -310,6 +332,10 @@ void settingDialog::on_summarySegmentDurationChanged(int value) {
 void settingDialog::on_summaryModelChanged(const QString& text) {
     Q_UNUSED(text);
     ConfigManager::instance().setSummaryModel(m_summaryModelCombo->currentData().toString());
+}
+
+void settingDialog::on_summarySemanticSegChanged(bool checked) {
+    ConfigManager::instance().setSemanticSegmentationEnabled(checked);
 }
 
 

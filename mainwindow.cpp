@@ -218,6 +218,11 @@ void MainWindow::onPlayerOpenResult(bool result)
         if (m_summaryPanel) {
             m_summaryPanel->setVideoPath(player_->getFileUrl());
         }
+        if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
+            && m_summaryManager->state() != SummaryState::Finished
+            && m_summaryManager->state() != SummaryState::Error) {
+            m_summaryManager->stopSummary();
+        }
         // mp3渲染专辑封面
         if (!player_->hasVideo()) {
             ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::Cover);
@@ -924,6 +929,11 @@ void MainWindow::play(QString filePath)
     }
     if (m_summaryPanel) {
         m_summaryPanel->setVideoPath(filePath);
+    }
+    if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
+        && m_summaryManager->state() != SummaryState::Finished
+        && m_summaryManager->state() != SummaryState::Error) {
+        m_summaryManager->stopSummary();
     }
     player_->open(filePath);
 }

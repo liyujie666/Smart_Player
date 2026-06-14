@@ -24,7 +24,10 @@ class SummaryPanel : public QWidget {
 public:
     explicit SummaryPanel(QWidget* parent = nullptr);
     void bindManager(VideoSummaryManager* mgr);
-    void setVideoPath(const QString& path) { m_currentVideoPath = path; }
+
+    // 设置当前视频路径：路径变化时自动重置面板到初始态，
+    // 路径未变时不动（避免拖动进度条等场景误清空）。
+    void setVideoPath(const QString& path);
     QString videoPath() const { return m_currentVideoPath; }
 
 signals:
@@ -51,9 +54,11 @@ private slots:
 
 private:
     void buildUI();
+    void resetPanelForNewVideo();   // 切换视频时重置面板到初始占位态
     void updateSegmentItem(int index, const QString& desc, bool isAnalyzed);
     void updateStatusLabel(const VideoSummaryManager::Progress& progress);
     void rebuildSegmentList();
+    void rebuildSegmentList(const QList<SummaryChapter>& chapters);
     void populateFromReport(const SummaryReport& report);
     void exportMarkdown(const SummaryReport& report);
     int findSegmentAtMs(qint64 ms) const;
@@ -109,6 +114,9 @@ private:
     // Current playback position tracking
     qint64 m_currentPositionMs = -1;
     int m_highlightedSegment = -1;
+
+    // 分析期间屏蔽章节列表实时刷新，等 structuredReportReady 统一展示
+    bool m_analysisInProgress = false;
 
     QString m_currentVideoPath;
 };
