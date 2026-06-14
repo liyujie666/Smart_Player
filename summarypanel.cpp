@@ -1,4 +1,6 @@
 #include "summarypanel.h"
+#include "summarysettingsdialog.h"
+#include "configmanager.h"
 #include <QListWidgetItem>
 #include <QMovie>
 #include <QScrollBar>
@@ -89,6 +91,14 @@ void SummaryPanel::buildUI() {
     m_btnExport = new QPushButton(QStringLiteral(u"\U0001f4cb \u5bfc\u51fa"), this);
     m_btnExport->setObjectName("btnExport");
 
+    // 设置按钮 (打开 SummarySettingsDialog)
+    m_btnSettings = new QPushButton(
+        QIcon(QString::fromLatin1(":/SmartPlayer-icon/setting_dark.png")),
+        QString(), this);
+    m_btnSettings->setObjectName("btnSettings");
+    m_btnSettings->setToolTip(QStringLiteral(u"AI 总结设置"));
+    m_btnSettings->setIconSize(QSize(22, 22));
+
     m_btnStop->setEnabled(false);
     m_btnRerun->setEnabled(false);
     m_btnExport->setEnabled(false);
@@ -99,6 +109,7 @@ void SummaryPanel::buildUI() {
     toolbarLayout->addWidget(m_btnRerun, 0, Qt::AlignVCenter);
     toolbarLayout->addWidget(m_btnExport, 0, Qt::AlignVCenter);
     toolbarLayout->addStretch();
+    toolbarLayout->addWidget(m_btnSettings, 0, Qt::AlignVCenter);
     mainLayout->addWidget(toolbarWidget);
 
     // ===== Meta bar =====
@@ -242,6 +253,7 @@ void SummaryPanel::buildUI() {
     connect(m_btnStop, &QPushButton::clicked, this, &SummaryPanel::onStopClicked);
     connect(m_btnRerun, &QPushButton::clicked, this, &SummaryPanel::onRerunClicked);
     connect(m_btnExport, &QPushButton::clicked, this, &SummaryPanel::onExportClicked);
+    connect(m_btnSettings, &QPushButton::clicked, this, &SummaryPanel::onSettingsClicked);
     connect(m_segmentList, &QListWidget::itemClicked, this, &SummaryPanel::onSegmentClicked);
     connect(m_lineTranscriptSearch, &QLineEdit::textChanged,
             this, &SummaryPanel::onTranscriptSearchChanged);
@@ -285,6 +297,15 @@ void SummaryPanel::buildUI() {
             color: #D1D5DB;
             border-color: #D1D5DB;
         }
+        QPushButton#btnSettings {
+            background-color: transparent;
+            border: none;
+            border-radius: 6px;
+            padding: 4px;
+            min-width: 30px; max-width: 30px;
+            min-height: 30px; max-height: 30px;
+        }
+        QPushButton#btnSettings:hover { background-color: #F3F4F6; }
         QProgressBar {
             border: none;
             border-radius: 4px;
@@ -520,6 +541,17 @@ void SummaryPanel::onExportClicked() {
         return;
     }
     exportMarkdown(r);
+}
+
+void SummaryPanel::onSettingsClicked() {
+    SummarySettingsDialog dlg(this);
+    dlg.exec();
+    // 配置改动不打断正在运行的分析,只在下次 startSummary 生效
+    // 如果用户改的是 model,这里刷新一下 combobox
+    if (m_manager) {
+        QString model = ConfigManager::instance().getSummaryModel();
+        m_manager->setModel(model);
+    }
 }
 
 void SummaryPanel::onStateChanged(SummaryState state) {

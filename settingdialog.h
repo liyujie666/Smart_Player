@@ -2,11 +2,6 @@
 #define SETTINGDIALOG_H
 
 #include <QDialog>
-#include <QLineEdit>
-#include <QSpinBox>
-#include <QLabel>
-#include <QComboBox>
-#include <QCheckBox>
 
 namespace Ui {
 class settingDialog;
@@ -43,13 +38,6 @@ private slots:
 
     void on_resetConfigBtn_clicked();
 
-    // AI 总结配置
-    void on_summaryApiKeyChanged(const QString& text);
-    void on_summaryEndpointChanged(const QString& text);
-    void on_summarySegmentDurationChanged(int value);
-    void on_summaryModelChanged(const QString& model);
-    void on_summarySemanticSegChanged(bool checked);
-
 signals:
     void startHardWareAccep(bool on);
     void startSoftWareAccep(bool on);
@@ -69,14 +57,6 @@ private:
     int originalSaturation_;
     QString originalScreenshotPath_;
     QString originalModelPath_;
-
-    // AI 总结配置控件（动态创建，不通过 .ui）
-    QLineEdit* m_summaryApiKeyLine = nullptr;
-    QLineEdit* m_summaryEndpointLine = nullptr;
-    QSpinBox* m_summarySegmentDurationSpin = nullptr;
-    QLabel* m_summarySegmentDurationLabel = nullptr;
-    QComboBox* m_summaryModelCombo = nullptr;
-    QCheckBox* m_summarySemanticSegCheck = nullptr;
 };
 
 #endif // SETTINGDIALOG_H

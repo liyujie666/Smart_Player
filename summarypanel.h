@@ -41,6 +41,7 @@ private slots:
     void onStopClicked();
     void onRerunClicked();
     void onExportClicked();
+    void onSettingsClicked();
     void onStateChanged(SummaryState state);
     void onSegmentAnalyzed(int index, const QString& desc);
     void onProgressUpdated(double progress);
@@ -77,6 +78,7 @@ private:
     QPushButton* m_btnStop = nullptr;
     QPushButton* m_btnRerun = nullptr;
     QPushButton* m_btnExport = nullptr;
+    QPushButton* m_btnSettings = nullptr;
 
     // Meta bar
     QLabel* m_lblMeta = nullptr;
