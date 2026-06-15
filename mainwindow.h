@@ -14,8 +14,11 @@
 #include "configmanager.h"
 #include "videosummarymanager.h"
 #include "summarypanel.h"
+#include "transcriptpanel.h"
 #include <QMainWindow>
 #include <qlistwidget.h>
+#include <QTabWidget>
+#include <QDockWidget>
 #include <QVector>
 #include <QTimer>
 #include <QMenu>
@@ -136,7 +139,7 @@ private:
     void exitFullScreenMode();
     void centerLoadingLabel();
 
-    void setupSummaryPanel();
+    void setupRightPanel();
 
 
 
@@ -176,8 +179,10 @@ private:
     PlayMode playMode_ = PlayMode::ListLoop;
 
     VideoSummaryManager* m_summaryManager = nullptr;
-    SummaryPanel* m_summaryPanel = nullptr;
-    QDockWidget* m_summaryDock = nullptr;
+    SummaryPanel*        m_summaryPanel    = nullptr;
+    TranscriptPanel*     m_transcriptPanel = nullptr;
+    QDockWidget*         m_rightDock       = nullptr;   // 合并后的右侧 dock（内含 tab）
+    QTabWidget*          m_rightTab        = nullptr;   // AI 总结 / 视频文稿 两个 tab
 
 };
 #endif // MAINWINDOW_H

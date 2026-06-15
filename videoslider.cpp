@@ -11,7 +11,12 @@ void VideoSlider::mouseReleaseEvent(QMouseEvent *ev) {
     int value = QStyle::sliderValueFromPosition(minimum(), maximum(), ev->pos().x(), width());
     setValue(value);
     QSlider::mouseReleaseEvent(ev);
-    emit clicked(this);
+    // 注意：这里不要 emit clicked(this)——
+    // QSlider::mouseReleaseEvent 内部已经 emit 了 sliderReleased，
+    // 而 mainwindow 在 sliderReleased 里就会调用 player_->seek(value)。
+    // 若再 emit clicked，会再触发一次 onSliderClicked 里的 seek，
+    // 而那一次 seek 内部 emit timeChanged，会在 sync_clock 被 reset 后
+    // 把 progressSlider->value 砸回 0，导致第二次 seek 跳到开头。
 }
 
 

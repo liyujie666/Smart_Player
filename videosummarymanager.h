@@ -73,6 +73,7 @@ signals:
     void structuredReportReady(const SummaryReport& report);
     void errorOccurred(const QString& message);
     void reportReceived(const QString& report, bool hasError, const QString& errorMsg);
+    void asrCompleted(const QList<SubtitleItem>& items);
 
 private:
     void extractFrames();

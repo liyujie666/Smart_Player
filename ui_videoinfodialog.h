@@ -21,7 +21,7 @@ QT_BEGIN_NAMESPACE
 class Ui_VideoInfoDialog
 {
 public:
-    QWidget *widget;
+    QWidget *layoutWidget;
     QVBoxLayout *verticalLayout;
     QLabel *fileNameLabel;
     QLabel *durationLabel;
@@ -39,13 +39,14 @@ public:
         VideoInfoDialog->resize(330, 375);
         VideoInfoDialog->setMinimumSize(QSize(330, 375));
         VideoInfoDialog->setMaximumSize(QSize(330, 375));
-        widget = new QWidget(VideoInfoDialog);
-        widget->setObjectName("widget");
-        widget->setGeometry(QRect(10, 1, 312, 364));
-        verticalLayout = new QVBoxLayout(widget);
+        VideoInfoDialog->setStyleSheet(QString::fromUtf8(""));
+        layoutWidget = new QWidget(VideoInfoDialog);
+        layoutWidget->setObjectName("layoutWidget");
+        layoutWidget->setGeometry(QRect(10, 1, 312, 364));
+        verticalLayout = new QVBoxLayout(layoutWidget);
         verticalLayout->setObjectName("verticalLayout");
         verticalLayout->setContentsMargins(0, 0, 0, 0);
-        fileNameLabel = new QLabel(widget);
+        fileNameLabel = new QLabel(layoutWidget);
         fileNameLabel->setObjectName("fileNameLabel");
         QSizePolicy sizePolicy(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Expanding);
         sizePolicy.setHorizontalStretch(0);
@@ -57,13 +58,12 @@ public:
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         fileNameLabel->setWordWrap(true);
 
         verticalLayout->addWidget(fileNameLabel);
 
-        durationLabel = new QLabel(widget);
+        durationLabel = new QLabel(layoutWidget);
         durationLabel->setObjectName("durationLabel");
         sizePolicy.setHeightForWidth(durationLabel->sizePolicy().hasHeightForWidth());
         durationLabel->setSizePolicy(sizePolicy);
@@ -72,13 +72,12 @@ public:
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         durationLabel->setWordWrap(true);
 
         verticalLayout->addWidget(durationLabel);
 
-        bitRateLabel = new QLabel(widget);
+        bitRateLabel = new QLabel(layoutWidget);
         bitRateLabel->setObjectName("bitRateLabel");
         sizePolicy.setHeightForWidth(bitRateLabel->sizePolicy().hasHeightForWidth());
         bitRateLabel->setSizePolicy(sizePolicy);
@@ -87,26 +86,24 @@ public:
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         bitRateLabel->setWordWrap(true);
 
         verticalLayout->addWidget(bitRateLabel);
 
-        frameRateLabel = new QLabel(widget);
+        frameRateLabel = new QLabel(layoutWidget);
         frameRateLabel->setObjectName("frameRateLabel");
         frameRateLabel->setStyleSheet(QString::fromUtf8("QLabel{\n"
 "	min-height:40px;\n"
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         frameRateLabel->setWordWrap(true);
 
         verticalLayout->addWidget(frameRateLabel);
 
-        nameLabel = new QLabel(widget);
+        nameLabel = new QLabel(layoutWidget);
         nameLabel->setObjectName("nameLabel");
         sizePolicy.setHeightForWidth(nameLabel->sizePolicy().hasHeightForWidth());
         nameLabel->setSizePolicy(sizePolicy);
@@ -115,26 +112,24 @@ public:
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         nameLabel->setWordWrap(true);
 
         verticalLayout->addWidget(nameLabel);
 
-        picFmtLabel = new QLabel(widget);
+        picFmtLabel = new QLabel(layoutWidget);
         picFmtLabel->setObjectName("picFmtLabel");
         picFmtLabel->setStyleSheet(QString::fromUtf8("QLabel{\n"
 "	min-height:40px;\n"
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         picFmtLabel->setWordWrap(true);
 
         verticalLayout->addWidget(picFmtLabel);
 
-        aChannelsLabel = new QLabel(widget);
+        aChannelsLabel = new QLabel(layoutWidget);
         aChannelsLabel->setObjectName("aChannelsLabel");
         sizePolicy.setHeightForWidth(aChannelsLabel->sizePolicy().hasHeightForWidth());
         aChannelsLabel->setSizePolicy(sizePolicy);
@@ -143,13 +138,12 @@ public:
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         aChannelsLabel->setWordWrap(true);
 
         verticalLayout->addWidget(aChannelsLabel);
 
-        aSampleRateLabel = new QLabel(widget);
+        aSampleRateLabel = new QLabel(layoutWidget);
         aSampleRateLabel->setObjectName("aSampleRateLabel");
         sizePolicy.setHeightForWidth(aSampleRateLabel->sizePolicy().hasHeightForWidth());
         aSampleRateLabel->setSizePolicy(sizePolicy);
@@ -158,7 +152,6 @@ public:
 "	max-height:40px;\n"
 "	min-width: 310px;\n"
 "	max-width:310px;\n"
-"	color: white;\n"
 "}"));
         aSampleRateLabel->setWordWrap(true);
 

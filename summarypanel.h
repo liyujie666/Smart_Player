@@ -31,6 +31,9 @@ public:
     void setVideoPath(const QString& path);
     QString videoPath() const { return m_currentVideoPath; }
 
+    // 文稿面板（PR3）：用于在拿到 report 时把数据喂给文稿面板
+    void setTranscriptPanel(class TranscriptPanel* panel) { m_transcriptPanel = panel; }
+
 signals:
     void seekTo(qint64 ms);
 
@@ -111,6 +114,9 @@ private:
     bool m_analysisInProgress = false;
 
     QString m_currentVideoPath;
+
+    // 文稿面板引用（weak：summarypanel 不持有它的生命周期）
+    class TranscriptPanel* m_transcriptPanel = nullptr;
 };
 
 #endif // SUMMARY_PANEL_H

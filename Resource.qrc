@@ -57,5 +57,7 @@
         <file>SmartPlayer-icon/start_pink.png</file>
         <file>SmartPlayer-icon/stop_blue.png</file>
         <file>SmartPlayer-icon/setting_dark.png</file>
+        <file>SmartPlayer-icon/arrow_down_dark.png</file>
+        <file>SmartPlayer-icon/arrow_right_dark.png</file>
     </qresource>
 </RCC>

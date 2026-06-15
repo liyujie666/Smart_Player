@@ -395,6 +395,9 @@ void PlayerCore::seek(int64_t pos_sec)
     is_seek_ = false;
     cond_.wakeAll();
     qDebug() << "Seek完成(秒):" << pos_sec;
+
+    // 通知 UI 面板（文稿/AI 总结）位置已更新——即使暂停中也需要立刻重染色
+    emit timeChanged();
 }
 
 void PlayerCore::setScreenshotSavePath(const QString &savePath)

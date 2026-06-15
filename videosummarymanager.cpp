@@ -652,6 +652,12 @@ void VideoSummaryManager::runWhisperASR(const QString& audioPath) {
     av_packet_free(&pkt);
     av_frame_free(&frame);
     worker.release();
+
+    // 通知文稿面板：ASR 完成（运行在 worker 线程，但 m_asrResults 跨线程只读是安全的，
+    // 连接的槽函数会在主线程自动通过 Qt::QueuedConnection 执行）
+    if (!m_stopRequested) {
+        emit asrCompleted(m_asrResults);
+    }
 }
 
 void VideoSummaryManager::analyzeSegments() {
@@ -995,6 +1001,9 @@ bool VideoSummaryManager::tryLoadFromCache(const QString& videoPath) {
     qDebug() << "[SummaryCache] 命中:" << cacheFile
              << "  (" << m_fullReport.chapters.size() << "章,"
              << m_fullReport.segments.size() << "段)";
+
+    // 缓存命中：通知文稿面板已有字幕可用
+    emit asrCompleted(m_asrResults);
     return true;
 }
 

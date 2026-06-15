@@ -18,7 +18,10 @@
 #include <QTimer>
 #include <QtConcurrent>
 #include <QDockWidget>
+#include <QTabWidget>
 #include <QAction>
+#include <QMenu>
+#include <QMenuBar>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -59,7 +62,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->speedLabel->setVisible(false);
     ui->infoLabel->hide();
 
-    setupSummaryPanel();
+    setupRightPanel();
 
     connect(&timer,&QTimer::timeout,this,&MainWindow::onLongPressTimeout);   //右方向键长按倍速播放
     connect(player_, &PlayerCore::openResult,this,&MainWindow::onPlayerOpenResult);//视频渲染
@@ -217,6 +220,9 @@ void MainWindow::onPlayerOpenResult(bool result)
 
         if (m_summaryPanel) {
             m_summaryPanel->setVideoPath(player_->getFileUrl());
+        }
+        if (m_transcriptPanel) {
+            m_transcriptPanel->setVideoPath(player_->getFileUrl());
         }
         if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
             && m_summaryManager->state() != SummaryState::Finished
@@ -1484,36 +1490,86 @@ void MainWindow::on_subtitleBtn_clicked()
     subtitlePopup_->show();
 }
 
-void MainWindow::setupSummaryPanel() {
-    m_summaryManager = new VideoSummaryManager();
-    m_summaryPanel = new SummaryPanel(this);
+void MainWindow::setupRightPanel() {
+    m_summaryManager  = new VideoSummaryManager();
+    m_summaryPanel    = new SummaryPanel(this);
+    m_transcriptPanel = new TranscriptPanel(this);
 
-    m_summaryDock = new QDockWidget(QStringLiteral(u"AI \u89c6\u9891\u603b\u7ed3"), this);
-    m_summaryDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
-    m_summaryDock->setWidget(m_summaryPanel);
-    m_summaryDock->setMinimumWidth(320);
-    m_summaryDock->setMaximumWidth(420);
-    m_summaryDock->setStyleSheet(QString::fromLatin1(
-        "QDockWidget { border: none; background-color: #FFFFFF; }"
-        "QDockWidget > QWidget { background-color: #FFFFFF; border: none; }"
-        "QDockWidget::title { background: #F9FAFB; border-bottom: 1px solid #E5E7EB; padding: 6px 8px; }"
+    // 用 QTabWidget 把"AI 视频总结"和"视频文稿"装到 mainwindow 右侧边缘，
+    // 不再包一层 QDockWidget——避免 dock 标题和 tab 标题重复。
+    // 行为类似浏览器的标签页：点 tab 切换下方内容。
+    m_rightTab = new QTabWidget(this);
+    m_rightTab->setDocumentMode(true);
+    m_rightTab->setTabsClosable(false);
+    m_rightTab->setMovable(false);
+    m_rightTab->setUsesScrollButtons(true);
+    m_rightTab->addTab(m_summaryPanel,    QStringLiteral(u"AI \u89c6\u9891\u603b\u7ed3"));
+    m_rightTab->addTab(m_transcriptPanel, QStringLiteral(u"\u89c6\u9891\u6587\u7a3f"));
+    m_rightTab->setMinimumWidth(320);
+    m_rightTab->setMaximumWidth(480);
+    m_rightTab->setStyleSheet(QString::fromLatin1(
+        "QTabWidget::pane {"
+            " border: 1px solid #E5E7EB; border-top: none;"
+            " background: #FFFFFF;"
+        "}"
+        "QTabBar::tab {"
+            " height: 28px; padding: 0 14px;"
+            " background: #F3F4F6; color: #6B7280;"
+            " border: 1px solid #E5E7EB; border-bottom: none;"
+            " border-top-left-radius: 6px; border-top-right-radius: 6px;"
+            " margin-right: 2px; font-size: 12px; font-family: Microsoft YaHei, sans-serif;"
+        "}"
+        "QTabBar::tab:selected {"
+            " background: #FFFFFF; color: #0C4A6E; font-weight: bold;"
+            " border-bottom: 1px solid #FFFFFF;"
+        "}"
+        "QTabBar::tab:hover:!selected { background: #E0F2FE; color: #0C4A6E; }"
     ));
-    addDockWidget(Qt::RightDockWidgetArea, m_summaryDock);
-    m_summaryDock->hide();
+    m_rightTab->hide();
 
+    // 通过 QMainWindow::addDockWidget 把它放到右侧。
+    // 为了拿到 QDockWidget 接口（控制显隐/停靠），临时包一个"薄"的 dock（无标题）。
+    m_rightDock = new QDockWidget(this);
+    m_rightDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    m_rightDock->setFeatures(QDockWidget::NoDockWidgetFeatures);  // 隐藏标题栏/关闭按钮
+    m_rightDock->setTitleBarWidget(new QWidget());  // 用空 widget 顶掉标题栏
+    m_rightDock->setWidget(m_rightTab);
+    addDockWidget(Qt::RightDockWidgetArea, m_rightDock);
+    m_rightDock->hide();
+
+    // SummaryPanel 数据绑定
     m_summaryPanel->bindManager(m_summaryManager);
-
     connect(m_summaryPanel, &SummaryPanel::seekTo, this, [this](qint64 ms) {
         player_->seek(ms);
     });
-
     connect(player_, &PlayerCore::timeChanged, m_summaryPanel, [this]() {
         m_summaryPanel->onPositionChanged(player_->getCurrentPos());
     });
+
+    // TranscriptPanel 信号连接
+    connect(m_transcriptPanel, &TranscriptPanel::seekTo, this, [this](qint64 ms) {
+        // 文稿面板传的是真·毫秒；PlayerCore::seek 内部用 AV_TIME_BASE_Q
+        // 转发给 demuxer（微秒），这里 × 1000 把毫秒转成微秒。
+        player_->seek(ms * 1000);
+    });
+    connect(player_, &PlayerCore::timeChanged, m_transcriptPanel, [this]() {
+        m_transcriptPanel->onPositionChanged(player_->getCurrentPos());
+    });
+    connect(player_, &PlayerCore::initFinished, this, [this]() {
+        m_transcriptPanel->setDuration(player_->getDuration());
+    });
+    connect(m_summaryManager, &VideoSummaryManager::asrCompleted,
+            m_transcriptPanel, &TranscriptPanel::setSubtitleItems);
+    m_summaryPanel->setTranscriptPanel(m_transcriptPanel);
+
+    // 不再使用 menubar——面板切换由 tab 直接承担
+    if (QMenuBar* mb = menuBar()) {
+        mb->setVisible(false);
+    }
 }
 
 void MainWindow::on_aiSummaryBtn_clicked()
 {
-    m_summaryDock->setVisible(!m_summaryDock->isVisible());
+    if (!m_rightDock) return;
+    m_rightDock->setVisible(!m_rightDock->isVisible());
 }
-

@@ -1,4 +1,5 @@
 #include "summarypanel.h"
+#include "transcriptpanel.h"
 #include "summarysettingsdialog.h"
 #include "configmanager.h"
 #include <QListWidgetItem>
@@ -799,6 +800,13 @@ void SummaryPanel::populateFromReport(const SummaryReport& report) {
     // 解除屏蔽后立即刷新,此时已有章节标题
     m_analysisInProgress = false;
     rebuildSegmentList(report.chapters);
+
+    // 一次性把三份数据都喂给 TranscriptPanel
+    if (m_transcriptPanel) {
+        m_transcriptPanel->setChapters(report.chapters);
+        m_transcriptPanel->setSegments(report.segments);
+        m_transcriptPanel->setSubtitleItems(report.asrResults);
+    }
 
     // Enable export
     m_btnExport->setEnabled(true);
