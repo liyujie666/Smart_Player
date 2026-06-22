@@ -484,15 +484,20 @@ void PlayerCore::demuxThreadFunc()
 
         if (is_exit_) break;
 
-        if (demuxer_->hasStream(AVMEDIA_TYPE_AUDIO)) {
-            while (audio_pkt_queue_->Size() >= MAX_AUDIO_PKT && !is_exit_ && !is_seek_) {
-                QThread::msleep(10);
-            }
-        }
-        if (demuxer_->hasStream(AVMEDIA_TYPE_VIDEO)) {
-            while (video_pkt_queue_->Size() >= MAX_VIDEO_PKT && !is_exit_ && !is_seek_) {
-                QThread::msleep(10);
-            }
+        // 背压：只有当「所有存在的流」队列都已满时才睡眠等待。
+        // 不能像以前那样先串行等音频满、再等视频满——否则音频队列一满就
+        // 把整个 demux 线程卡死，连带饿死视频包供给（seek 时尤其明显：
+        // 视频解码要吞掉关键帧到目标帧之间的大量帧，视频包消耗极快，
+        // 而音频包小、消费慢，音频队列很容易先满）。
+        const bool hasA = demuxer_->hasStream(AVMEDIA_TYPE_AUDIO);
+        const bool hasV = demuxer_->hasStream(AVMEDIA_TYPE_VIDEO);
+        while (!is_exit_ && !is_seek_)
+        {
+            const bool audioFull = !hasA || audio_pkt_queue_->Size() >= MAX_AUDIO_PKT;
+            const bool videoFull = !hasV || video_pkt_queue_->Size() >= MAX_VIDEO_PKT;
+            // 任一仍有空间就继续读包，保证每条流都能持续被喂数据
+            if (!audioFull || !videoFull) break;
+            QThread::msleep(5);
         }
 
         av_packet_unref(pkt);

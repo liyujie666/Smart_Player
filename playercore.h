@@ -130,8 +130,12 @@ private:
     AVFrameQueue* audio_frame_queue_ = nullptr;
     AVFrameQueue* video_frame_queue_ = nullptr;
 
-    static constexpr int MAX_AUDIO_PKT = 5;
-    static constexpr int MAX_VIDEO_PKT = 10;
+    // 视频包队列要足够大：seek 到关键帧后，需要解码关键帧到目标帧之间
+    // 的一长串 P/B 帧（高帧率下可达几十上百帧）才能显示目标画面，缓冲太
+    // 小会在「追帧期」瞬间被抽干，导致解码器输入不足、receive_frame 返回
+    // EAGAIN、画面卡住。音频包小、消费慢，无需太大。
+    static constexpr int MAX_AUDIO_PKT = 16;
+    static constexpr int MAX_VIDEO_PKT = 60;
     static constexpr int MAX_AUDIO_FRAME = 8;
     static constexpr int MAX_VIDEO_FRAME = 15;
     // 线程
