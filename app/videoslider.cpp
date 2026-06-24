@@ -1,5 +1,6 @@
 #include "videoslider.h"
 #include <QMouseEvent>
+#include <QKeyEvent>
 #include <QStyle>
 
 VideoSlider::VideoSlider(QWidget *parent) : QSlider(parent) {
@@ -35,7 +36,23 @@ void VideoSlider::leaveEvent(QEvent *ev){
     emit mouseleave();
 }
 
+void VideoSlider::keyPressEvent(QKeyEvent *ev)
+{
+    // QAbstractSlider 默认会把方向键翻译成 ±singleStep 的 setValue 并 accept，
+    // 导致事件不再冒泡到 MainWindow，破坏键盘快进/快退的全局快捷键。
+    // 这里把方向键 ignore 掉，让 MainWindow::keyPressEvent 统一处理。
+    switch (ev->key()) {
+    case Qt::Key_Left:
+    case Qt::Key_Right:
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+        ev->ignore();
+        return;
+    default:
+        QSlider::keyPressEvent(ev);
+    }
+}
+
 void VideoSlider::changeValue(int n){
     setValue(value() + n);
-    emit clicked(this);
 }

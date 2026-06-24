@@ -21,6 +21,7 @@ private:
     void mouseReleaseEvent(QMouseEvent *ev) override;
     void mouseMoveEvent(QMouseEvent *ev) override;
     void leaveEvent(QEvent *ev) override;
+    void keyPressEvent(QKeyEvent *ev) override;
 
     clock_t start;
     int x;

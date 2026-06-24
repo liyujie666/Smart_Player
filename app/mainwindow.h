@@ -17,12 +17,12 @@
 #include "transcriptpanel.h"
 #include <QMainWindow>
 #include <qlistwidget.h>
-#include <QTabWidget>
 #include <QDockWidget>
 #include <QVector>
 #include <QTimer>
 #include <QMenu>
 #include <QLabel>
+class SlidingTabWidget;
 QT_BEGIN_NAMESPACE
 namespace Ui {
 class MainWindow;
@@ -126,8 +126,10 @@ private:
     void initPreviewWindow();
     void initControlbarPresent();
     void initComponent();
+    void applyPersistentSettings();
     QString getTimeText(int64_t value);
     QListWidgetItem* findItemByPath(const QString& path);
+    void seekRelative(int seconds);  // 以当前位置为基准相对偏移 seek
     void mousePressEvent(QMouseEvent *event) override;//获取视频信息
     void mouseDoubleClickEvent(QMouseEvent *event) override;//鼠标双击全屏
     void keyPressEvent(QKeyEvent * event) override;//快捷键
@@ -164,6 +166,7 @@ private:
     QTimer timer; // 定时器
     bool isLongPress = false; // 是否长按
     bool is_seeking = false;
+    bool isMutedByUser_ = false;     // 用户期望的静音状态（切视频后保留）
 
 
     QTimer *hideCursorTimer;       // 3秒定时隐藏
@@ -182,7 +185,7 @@ private:
     SummaryPanel*        m_summaryPanel    = nullptr;
     TranscriptPanel*     m_transcriptPanel = nullptr;
     QDockWidget*         m_rightDock       = nullptr;   // 合并后的右侧 dock（内含 tab）
-    QTabWidget*          m_rightTab        = nullptr;   // AI 总结 / 视频文稿 两个 tab
+    SlidingTabWidget*    m_rightTab        = nullptr;   // AI 总结 / 视频文稿 两个 tab（带滑块动画）
 
 };
 #endif // MAINWINDOW_H

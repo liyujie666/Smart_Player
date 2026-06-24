@@ -224,7 +224,7 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
             //     audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
             // }
             audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
-            //qDebug() << "audio pts : " << audio_clock_us_;
+            qDebug() << "audio pts : " << audio_clock_us_;
             sync_clock_->set_audio_clock(audio_clock_us_);
 
 

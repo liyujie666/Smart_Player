@@ -380,25 +380,26 @@ void PlayerCore::seek(int64_t pos_us)
     {
         QMutexLocker lock(&mutex_);
         is_seek_ = true;
+        state_ = Paused;
         cond_.wakeAll();
     }
 
-    demuxer_->seek(pos_us);
-
+    // 注意：先清空队列和解码器缓存，后seek，否则会卡顿
     clearAllQueues();
-
     if (video_decoder_) video_decoder_->flush();
     if (audio_decoder_) audio_decoder_->flush();
 
+    int ret = demuxer_->seek(pos_us);
+    if (ret < 0) qWarning() << "seek failed";
+
+
     sync_clock_->reset();
-    asr_manager_->reset();
+    sync_clock_->set_audio_clock(pos_us);
 
     is_seek_ = false;
+    state_ = Running;
     cond_.wakeAll();
-    qDebug() << "Seek完成(秒):" << pos_us;
-
-    // 通知 UI 面板（文稿/AI 总结）位置已更新——即使暂停中也需要立刻重染色
-    emit timeChanged();
+    asr_manager_->reset();
 }
 
 void PlayerCore::setScreenshotSavePath(const QString &savePath)
@@ -725,7 +726,7 @@ void PlayerCore::videoRenderThreadFunc()
         // 视频pts
         AVStream* vs = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
         int64_t video_pts_us = av_rescale_q(frame->pts, vs->time_base, {1,1000000});
-        //qDebug() << "video pts : " << video_pts_us;
+        qDebug() << "video pts : " << video_pts_us;
 
         // 计算延迟
         int64_t delay = sync_clock_->calc_display_delay(video_pts_us);

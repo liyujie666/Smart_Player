@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "slidingtabwidget.h"
 #include <algorithm>
 #include <random>
 #include <QFileDialog>
@@ -18,7 +19,6 @@
 #include <QTimer>
 #include <QtConcurrent>
 #include <QDockWidget>
-#include <QTabWidget>
 #include <QAction>
 #include <QMenu>
 #include <QMenuBar>
@@ -210,10 +210,25 @@ void MainWindow::onPlayerPlayFailed(const QString& info)
     QMessageBox::critical(nullptr, "提示", info);
 }
 
+void MainWindow::applyPersistentSettings()
+{
+    // 倍速:
+    player_->setSpeed(4 - ui->mutipleSPeed->currentIndex());
+
+    // 音量
+    player_->setVolume(ui->volumeSlider->value());
+
+    // 静音状态
+    player_->setMute(isMutedByUser_);
+}
+
 void MainWindow::onPlayerOpenResult(bool result)
 {
     if(result){
         player_->play();
+
+        applyPersistentSettings();
+
         ui->videoWidget->start();
         ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::Video);
 
@@ -261,6 +276,19 @@ void MainWindow::onSliderClicked(VideoSlider *slider)
 {
     qDebug() << "Slider value is " << slider->value();
     player_->seek(slider->value() * 1000000);
+}
+
+void MainWindow::seekRelative(int seconds)
+{
+    if (player_->state() == PlayerCore::Stopped) return;
+
+    const int current = ui->progressSlider->value();
+    const int maxVal  = ui->progressSlider->maximum();
+    const int newVal  = qBound(0, current + seconds, maxVal);
+    if (newVal == current) return;
+
+    ui->progressSlider->setValue(newVal);
+    player_->seek(int64_t(newVal) * 1000000);
 }
 
 void MainWindow::onSliderMouseFoucs(int seektime,int x)
@@ -469,19 +497,13 @@ void MainWindow::on_switchPlayModeBtn_clicked()
 
 void MainWindow::on_back3sBtn_clicked()
 {
-    PlayerCore::State state = player_->state();
-    if(state != PlayerCore::Stopped){
-        ui->progressSlider->changeValue(-10);
-    }
+    seekRelative(-10);
 }
 
 
 void MainWindow::on_forward3sBtn_clicked()
 {
-    PlayerCore::State state = player_->state();
-    if(state != PlayerCore::Stopped){
-        ui->progressSlider->changeValue(10);
-    }
+    seekRelative(10);
 }
 
 
@@ -489,9 +511,11 @@ void MainWindow::on_volumeBtn_clicked()
 {
     if(player_->isMute()){
         player_->setMute(false);
+        isMutedByUser_ = false;
         ui->volumeBtn->setIcon(QIcon(":/SmartPlayer-icon/volume.png"));
     }else{
         player_->setMute(true);
+        isMutedByUser_ = true;
         ui->volumeBtn->setIcon(QIcon(":/SmartPlayer-icon/no_volume.png"));
     }
 }
@@ -628,13 +652,17 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
             }
         }
 
-        //方向键右键，快进15秒
+        //方向键右键，快进10秒
         else if(event->key() == Qt::Key_Right){
             state = player_->state();
             if(state != PlayerCore::Stopped){
                 if(!event->isAutoRepeat()){
                     isLongPress = false;
                     timer.start(500);
+                    // 短按立即快进；VideoSlider 已 ignore 方向键，
+                    // 这里不会与 slider 内置步进叠加。
+                    seekRelative(10);
+                    messageInfo("快进10s",1000);
                 }else{ //长按状态
                     if(!isLongPress){
                         player_->setSpeed(4);
@@ -648,11 +676,8 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
 
         //方向键左键，后退10秒
         else if(event->key() == Qt::Key_Left){
-            state = player_->state();
-            if(state != PlayerCore::Stopped){
-                ui->progressSlider->changeValue(-10);
-                messageInfo("后退10s",1000);
-            }
+            seekRelative(-10);
+            messageInfo("后退10s",1000);
         }
 
         //方向键上键，音量加5
@@ -716,15 +741,13 @@ void MainWindow::keyReleaseEvent(QKeyEvent* event){
     if(state != PlayerCore::Stopped){
         if(event->key() == Qt::Key_Right){
             timer.stop();
-            if(!isLongPress){ //如果是短按
-                 ui->progressSlider->changeValue(10); //快进10s
-                 messageInfo("快进10s",1000);
-            }else{
+            if(isLongPress){ //长按松开时恢复正常倍速
                 player_->setSpeed(2);
                 ui->mutipleSPeed->setCurrentIndex(2);
                 ui->speedLabel->setVisible(false);
                 isLongPress = false;
             }
+            // 短按的 seekRelative(10) 已在 keyPressEvent 触发，这里不重复。
         }
     }
 }
@@ -959,10 +982,12 @@ void MainWindow::on_volumeSlider_valueChanged(int value)
     if(player_->isMute()){
         ui->volumeBtn->setIcon(QIcon(":/SmartPlayer-icon/volume.png"));
         player_->setMute(false);
+        isMutedByUser_ = false;
     }
     if(value == 0){
         ui->volumeBtn->setIcon(QIcon(":/SmartPlayer-icon/no_volume.png"));
         player_->setMute(true);
+        isMutedByUser_ = true;
     }
     player_->setVolume(value);
 }
@@ -1280,8 +1305,6 @@ void MainWindow::initPreviewWindow()
     previewTimeLabel_->setStyleSheet(R"(
         QLabel {
             color: #f0f0f0;
-            font-size: 12px;
-            font-family: Microsoft YaHei;
             qproperty-alignment: 'AlignHCenter | AlignTop';
             background-color: transparent;
             border: none;
@@ -1506,37 +1529,16 @@ void MainWindow::setupRightPanel() {
     m_summaryPanel    = new SummaryPanel(this);
     m_transcriptPanel = new TranscriptPanel(this);
 
-    // 用 QTabWidget 把"AI 视频总结"和"视频文稿"装到 mainwindow 右侧边缘，
+    // 用 SlidingTabWidget 把"AI 视频总结"和"视频文稿"装到 mainwindow 右侧边缘，
+    // 两个 tab 按钮等宽平分整个面板宽度，切换时有"胶囊背景色块"在按钮之间滑动的动画。
     // 不再包一层 QDockWidget——避免 dock 标题和 tab 标题重复。
-    // 行为类似浏览器的标签页：点 tab 切换下方内容。
-    m_rightTab = new QTabWidget(this);
-    m_rightTab->setDocumentMode(true);
-    m_rightTab->setTabsClosable(false);
-    m_rightTab->setMovable(false);
-    m_rightTab->setUsesScrollButtons(true);
+    m_rightTab = new SlidingTabWidget(this);
+    m_rightTab->setAnimationDuration(200); // 用户偏好：200ms
     m_rightTab->addTab(m_summaryPanel,    QStringLiteral(u"AI \u89c6\u9891\u603b\u7ed3"));
     m_rightTab->addTab(m_transcriptPanel, QStringLiteral(u"\u89c6\u9891\u6587\u7a3f"));
     m_rightTab->setMinimumWidth(320);
     m_rightTab->setMaximumWidth(480);
-    m_rightTab->setStyleSheet(QString::fromLatin1(
-        "QTabWidget::pane {"
-            " border: 1px solid #E5E7EB; border-top: none;"
-            " background: #FFFFFF;"
-        "}"
-        "QTabBar::tab {"
-            " height: 28px; padding: 0 14px;"
-            " background: #F3F4F6; color: #6B7280;"
-            " border: 1px solid #E5E7EB; border-bottom: none;"
-            " border-top-left-radius: 6px; border-top-right-radius: 6px;"
-            " margin-right: 2px; font-size: 12px; font-family: Microsoft YaHei, sans-serif;"
-        "}"
-        "QTabBar::tab:selected {"
-            " background: #FFFFFF; color: #0C4A6E; font-weight: bold;"
-            " border-bottom: 1px solid #FFFFFF;"
-        "}"
-        "QTabBar::tab:hover:!selected { background: #E0F2FE; color: #0C4A6E; }"
-    ));
-    m_rightTab->hide();
+    m_rightTab->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
     // 通过 QMainWindow::addDockWidget 把它放到右侧。
     // 为了拿到 QDockWidget 接口（控制显隐/停靠），临时包一个"薄"的 dock（无标题）。
