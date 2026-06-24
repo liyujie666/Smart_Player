@@ -12,8 +12,9 @@ const float OpenGLRenderer::texCoords_[] = {
 
 OpenGLRenderer::OpenGLRenderer(QWidget *parent) : QOpenGLWidget(parent)
 {
-    this->setAttribute(Qt::WA_PaintOnScreen, false);
-    this->setAttribute(Qt::WA_OpaquePaintEvent, true);
+    QSurfaceFormat fmt = format();
+    fmt.setAlphaBufferSize(8);
+    setFormat(fmt);
 }
 
 OpenGLRenderer::~OpenGLRenderer()
@@ -29,6 +30,10 @@ OpenGLRenderer::~OpenGLRenderer()
     if(uvTexture_)  { uvTexture_->destroy(); delete uvTexture_; uvTexture_ = nullptr; }
     if(rgbTexture_) { rgbTexture_->destroy(); delete rgbTexture_; rgbTexture_ = nullptr; }
     if(subtitleTexture_) { subtitleTexture_->destroy(); delete subtitleTexture_; subtitleTexture_ = nullptr; }
+
+    if(subProgram_) { delete subProgram_; subProgram_ = nullptr; }
+    if(subVao_) { delete subVao_; subVao_ = nullptr; }
+    if(subVbo_) { delete subVbo_; subVbo_ = nullptr; }
 
     delete program_;
     delete vao_;
@@ -80,7 +85,7 @@ void OpenGLRenderer::calculateAspectRatioVertices(float* vertices)
 void OpenGLRenderer::initializeGL()
 {
     initializeOpenGLFunctions();
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     program_ = new QOpenGLShaderProgram(this);
     vao_ = new QOpenGLVertexArrayObject(this);
@@ -146,7 +151,6 @@ void OpenGLRenderer::initializeGL()
             alpha = rgba.a;
         }
 
-        // 画面调节
         rgb = (rgb - 0.5) * contrast + 0.5;
         rgb += brightness;
         float gray = dot(rgb, vec3(0.299, 0.504, 0.098));
@@ -179,6 +183,49 @@ void OpenGLRenderer::initializeGL()
     vbo_->release();
     vao_->release();
 
+    // ========== 字幕专用着色器（独立 VAO/VBO） ==========
+    const char* subVert = R"(
+        attribute vec2 aPos;
+        attribute vec2 aTexCoord;
+        varying vec2 vTexCoord;
+        void main() {
+            gl_Position = vec4(aPos, 0.0, 1.0);
+            vTexCoord = aTexCoord;
+        }
+    )";
+    const char* subFrag = R"(
+        varying vec2 vTexCoord;
+        uniform sampler2D tex;
+        void main() {
+            vec4 c = texture2D(tex, vTexCoord);
+            gl_FragColor = vec4(c.rgb * c.a, c.a);
+        }
+    )";
+    subProgram_ = new QOpenGLShaderProgram(this);
+    subProgram_->addShaderFromSourceCode(QOpenGLShader::Vertex, subVert);
+    subProgram_->addShaderFromSourceCode(QOpenGLShader::Fragment, subFrag);
+    subProgram_->link();
+
+    subVao_ = new QOpenGLVertexArrayObject(this);
+    subVbo_ = new QOpenGLBuffer(QOpenGLBuffer::VertexBuffer);
+    subVao_->create();
+    subVao_->bind();
+    subVbo_->create();
+    subVbo_->bind();
+    subVbo_->setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    subVbo_->allocate(16 * sizeof(float));
+
+    int subPos = subProgram_->attributeLocation("aPos");
+    glVertexAttribPointer(subPos, 2, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(subPos);
+
+    int subTex = subProgram_->attributeLocation("aTexCoord");
+    glVertexAttribPointer(subTex, 2, GL_FLOAT, GL_FALSE, 0, (void*)(8*sizeof(float)));
+    glEnableVertexAttribArray(subTex);
+
+    subVbo_->release();
+    subVao_->release();
+
     // ========== 初始化所有纹理 ==========
     yTexture_  = new QOpenGLTexture(QOpenGLTexture::Target2D);
     uTexture_  = new QOpenGLTexture(QOpenGLTexture::Target2D);
@@ -200,13 +247,15 @@ void OpenGLRenderer::resizeGL(int w, int h)
     glViewport(0, 0, w, h);
     width_ = w;
     height_ = h;
+    subtitleDirty_ = true;
+    uploadSubtitleTexture(currentSubtitle_);
     update();
 }
 
 void OpenGLRenderer::paintGL()
 {
     if(isStopped){
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         return;
     }
@@ -249,48 +298,48 @@ void OpenGLRenderer::paintGL()
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
     // 绘制字幕
-    if (!currentSubtitle_.isEmpty() && subtitleTexture_->isCreated() && subTitleWidth_ > 0) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, 0);
+    {
+        if (subtitleMutex_.tryLock()) {
+            int localSubWidth = subTitleWidth_;
+            int localSubHeight = subTitleHeight_;
+            QString localSubtitle = currentSubtitle_;
+            subtitleMutex_.unlock();
 
-        program_->setUniformValue("renderMode", (int)RGBA);
-        program_->setUniformValue("brightness", 0.0f);
-        program_->setUniformValue("contrast", 1.0f);
-        program_->setUniformValue("saturation", 1.0f);
+            if (!localSubtitle.isEmpty() && subtitleTexture_->isCreated() && localSubWidth > 0) {
+                float subHeightNDC = (float)localSubHeight * 2.0f / height_;
+                float subWidthNDC = (float)localSubWidth * 2.0f / width_;
+                float left = -subWidthNDC / 2.0f;
+                float right = subWidthNDC / 2.0f;
+                float bottom = -1.0f;
+                float top = bottom + subHeightNDC;
 
-        float subHeightNDC = (float)subTitleHeight_ * 2.0f / height_;
-        float subWidthNDC = (float)subTitleWidth_ * 2.0f / width_;
-        float left = -subWidthNDC / 2.0f;
-        float right = subWidthNDC / 2.0f;
-        float bottom = -1.0f;
-        float top = bottom + subHeightNDC;
+                float subVertices[] = {
+                    left,  bottom,
+                    right, bottom,
+                    left,  top,
+                    right, top
+                };
+                float subTexCoords[] = {0.0f,1.0f, 1.0f,1.0f, 0.0f,0.0f, 1.0f,0.0f};
 
-        // 字幕顶点
-        float subVertices[] = {
-            left,  bottom,
-            right, bottom,
-            left,  top,
-            right, top
-        };
-        // 纹理坐标
-        float subTexCoords[] = {0.0f,1.0f, 1.0f,1.0f, 0.0f,0.0f, 1.0f,0.0f};
+                subVao_->bind();
+                subVbo_->bind();
+                subVbo_->write(0, subVertices, 8 * sizeof(float));
+                subVbo_->write(8*sizeof(float), subTexCoords, 8*sizeof(float));
+                subVbo_->release();
 
-        vbo_->bind();
-        vbo_->write(0, subVertices, 8 * sizeof(float));
-        vbo_->write(8*sizeof(float), subTexCoords, 8*sizeof(float));
-        vbo_->release();
+                subProgram_->bind();
+                subProgram_->setUniformValue("tex", 0);
+                subtitleTexture_->bind(0);
 
-        program_->setUniformValue("rgbTexture", 0);
-        subtitleTexture_->bind(0);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+                glDisable(GL_BLEND);
 
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-        glDisable(GL_BLEND);
+                subProgram_->release();
+                subVao_->release();
+            }
+        }
     }
 
     program_->release();
@@ -388,55 +437,108 @@ void OpenGLRenderer::uploadRGBATexture(const QByteArray &rgbData, int width, int
 
 void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
 {
-    if (currentSubtitle_ == text) {
-        return;
-    }
-    currentSubtitle_ = text;
+    // 先在 mutex 外准备图像数据，避免在持有 OpenGL context 时触发 paintGL 造成死锁
+    QString localText;
+    int localFontSize;
+    int localSubWidth = 0;
+    int localSubHeight = 0;
+    QImage img;
 
-    if (text.isEmpty() || width_ <= 0) {
-        makeCurrent();
+    {
+        QMutexLocker locker(&subtitleMutex_);
+        if (currentSubtitle_ == text && !subtitleDirty_) {
+            return;
+        }
+        localText = text;
+        localFontSize = subtitleFontSize_;
+        currentSubtitle_ = text;
+        subtitleDirty_ = false;
+
+        if (text.isEmpty() || width_ <= 0) {
+            subTitleWidth_ = 0;
+            subTitleHeight_ = 0;
+            // 清空操作放到锁外
+        } else {
+            QFont font;
+            font.setPointSize(subtitleFontSize_);
+            font.setBold(true);
+            font.setFamily("Microsoft YaHei");
+            QFontMetrics fm(font);
+
+            const int paddingH = 20;
+            const int paddingV = 6;
+            const int lineHeight = fm.height();
+            const int maxLineCount = 4;
+            const int maxWidth = qMax(width_ * 2 / 3, 200);
+
+            QString trimmed = text.simplified();
+            QStringList lines;
+            QString current;
+            for (QChar ch : trimmed) {
+                if (fm.horizontalAdvance(current + ch) > maxWidth - paddingH * 2) {
+                    if (!current.isEmpty()) {
+                        lines.append(current);
+                        current.clear();
+                    }
+                    if (lines.size() >= maxLineCount) {
+                        lines.append(current);
+                        break;
+                    }
+                }
+                current += ch;
+            }
+            if (!current.isEmpty() && lines.size() < maxLineCount) {
+                lines.append(current);
+            }
+
+            int subWidth = 0;
+            for (const QString& l : lines) {
+                subWidth = qMax(subWidth, fm.horizontalAdvance(l));
+            }
+            subWidth += paddingH * 2;
+            int subHeight = lines.size() * lineHeight + paddingV * 2;
+
+            qreal pr = devicePixelRatio();
+            int prSubWidth = qRound(subWidth * pr);
+            int prSubHeight = qRound(subHeight * pr);
+
+            img = QImage(prSubWidth, prSubHeight, QImage::Format_RGBA8888);
+            img.setDevicePixelRatio(pr);
+            img.fill(QColor(40, 40, 40, 180));
+
+            QPainter painter(&img);
+            painter.setPen(QColor(255, 255, 255, 255));
+            painter.setFont(font);
+            painter.setRenderHint(QPainter::TextAntialiasing);
+            painter.setRenderHint(QPainter::SmoothPixmapTransform);
+            int y = paddingV + fm.ascent();
+            for (const QString& l : lines) {
+                painter.drawText(paddingH, y, l);
+                y += lineHeight;
+            }
+            painter.end();
+
+            subTitleWidth_ = prSubWidth;
+            subTitleHeight_ = prSubHeight;
+            localSubWidth = prSubWidth;
+            localSubHeight = prSubHeight;
+        }
+    } // mutex 在这里释放，OpenGL 操作不会触发死锁
+
+    // OpenGL 操作在锁外执行
+    makeCurrent();
+    if (img.isNull()) {
         if (subtitleTexture_->isCreated()) {
             subtitleTexture_->destroy();
         }
-        doneCurrent();
-        update();
-        return;
+    } else {
+        subtitleTexture_->destroy();
+        subtitleTexture_->setSize(localSubWidth, localSubHeight);
+        subtitleTexture_->setFormat(QOpenGLTexture::RGBA8_UNorm);
+        subtitleTexture_->allocateStorage();
+        subtitleTexture_->setData(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8, img.bits());
+        setupTexture(subtitleTexture_);
     }
-
-    // 计算文字实际宽度
-    QFont font;
-    font.setPointSize(26);
-    font.setBold(true);
-    font.setFamily("Microsoft YaHei");
-    QFontMetrics fm(font);
-    int textWidth = fm.horizontalAdvance(text);
-    int subWidth = textWidth + 40;
-    int subHeight = SUBTITLE_HEIGHT;
-
-    // 自适应宽度的图片
-    QImage img(subWidth, subHeight, QImage::Format_RGBA8888);
-    img.fill(QColor(0, 0, 0, 150));
-
-    // 绘制文字
-    QPainter painter(&img);
-    painter.setPen(Qt::white);
-    painter.setFont(font);
-    painter.setRenderHint(QPainter::TextAntialiasing);
-    painter.drawText(img.rect(), Qt::AlignCenter, text);
-    painter.end();
-
-    // 上传自适应尺寸的字幕纹理
-    makeCurrent();
-    subtitleTexture_->destroy();
-    subtitleTexture_->setSize(subWidth, subHeight);
-    subtitleTexture_->setFormat(QOpenGLTexture::RGBA8_UNorm);
-    subtitleTexture_->allocateStorage();
-    subtitleTexture_->setData(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8, img.bits());
-    setupTexture(subtitleTexture_);
-
-    subTitleWidth_ = subWidth;
-    subTitleHeight_ = subHeight;
-
     doneCurrent();
     update();
 }
@@ -469,7 +571,7 @@ void OpenGLRenderer::clear()
 {
     if (!isValid()) return;
     makeCurrent();
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     doneCurrent();
     update();
@@ -477,9 +579,12 @@ void OpenGLRenderer::clear()
 
 void OpenGLRenderer::clearSubtitle()
 {
-    currentSubtitle_.clear();
-    subTitleWidth_ = 0;  // 重置尺寸
-    subTitleHeight_ = 0;
+    {
+        QMutexLocker locker(&subtitleMutex_);
+        currentSubtitle_.clear();
+        subTitleWidth_ = 0;
+        subTitleHeight_ = 0;
+    }
     makeCurrent();
     if (subtitleTexture_->isCreated()) {
         subtitleTexture_->destroy();
@@ -519,5 +624,13 @@ void OpenGLRenderer::setContrast(float value)
 void OpenGLRenderer::setSaturation(float value)
 {
     saturation_ = value;
+    update();
+}
+
+void OpenGLRenderer::setSubtitleFontSize(int size)
+{
+    subtitleFontSize_ = size;
+    subtitleDirty_ = true;
+    uploadSubtitleTexture(currentSubtitle_);
     update();
 }

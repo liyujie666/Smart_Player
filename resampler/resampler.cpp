@@ -96,7 +96,7 @@ void Resampler::close()
     closeInternal();
 }
 
-SwrContext *Resampler::getSwrContext() const
+SwrContext *Resampler::swrContext() const
 {
     QReadLocker locker(&mutex_);
     return swrCtx_;
@@ -111,19 +111,19 @@ void Resampler::closeInternal()
     isInitialized_ = false;
 }
 
-Resampler::AudioSpec Resampler::getInputSpec() const
+Resampler::AudioSpec Resampler::inputSpec() const
 {
     QReadLocker locker(&mutex_);
     return inSpec_;
 }
 
-Resampler::AudioSpec Resampler::getOutputSpec() const
+Resampler::AudioSpec Resampler::outputSpec() const
 {
     QReadLocker locker(&mutex_);
     return outSpec_;
 }
 
-int Resampler::getOutputBufferSize(int samples) const
+int Resampler::outputBufferSize(int samples) const
 {
     QReadLocker locker(&mutex_);
     if (!swrCtx_) {

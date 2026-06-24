@@ -433,7 +433,7 @@ border-radius:5px;
         <string>重置</string>
        </property>
        <property name="icon">
-        <iconset resource="Resource.qrc">
+        <iconset resource="../Resource.qrc">
          <normaloff>:/SmartPlayer-icon/reset.png</normaloff>:/SmartPlayer-icon/reset.png</iconset>
        </property>
        <property name="iconSize">
@@ -517,7 +517,7 @@ font-size:13px;
  }</string>
        </property>
        <property name="text">
-        <string>保存路径：</string>
+        <string>截图路径：</string>
        </property>
       </widget>
      </item>
@@ -719,7 +719,7 @@ QPushButton:pressed {
   </layout>
  </widget>
  <resources>
-  <include location="Resource.qrc"/>
+  <include location="../Resource.qrc"/>
  </resources>
  <connections/>
 </ui>

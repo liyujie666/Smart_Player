@@ -54,14 +54,14 @@ QVector<double> SemanticSegmenter::tfidfVector(const QString& text) {
 
     QStringList tokens = tokenize(normalized);
 
-    QMap<QString, int> tf;
+    QHash<QString, int> tf;
     for (const QString& tok : tokens) {
         tf[tok]++;
     }
 
     static const int VEC_SIZE = 512;
     QVector<double> vec(VEC_SIZE, 0.0);
-    for (auto it = tf.constBegin(); it != tf.constEnd(); ++it) {
+    for (auto it = tf.cbegin(); it != tf.cend(); ++it) {
         int idx = qHash(it.key()) % VEC_SIZE;
         vec[idx] = static_cast<double>(it.value());
     }

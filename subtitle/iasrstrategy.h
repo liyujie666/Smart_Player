@@ -17,6 +17,7 @@ public:
     virtual void reset() = 0;
     virtual void sendAudio(AVFrame*) {}
     virtual void release() = 0;
+    virtual void setModel(const QString& path) = 0;
 };
 
 #endif

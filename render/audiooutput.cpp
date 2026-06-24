@@ -130,7 +130,7 @@ void AudioOutput::setVolume(int volume) {
     volume_ = qBound(0, volume, 100);
 }
 
-int AudioOutput::getVolume() const {
+int AudioOutput::volume() const {
     return volume_;
 }
 
@@ -141,7 +141,7 @@ void AudioOutput::setMute(bool mute) {
 bool AudioOutput::isMute() const {
     return mute_;
 }
-int64_t AudioOutput::getAudioClock() const
+int64_t AudioOutput::audioClock() const
 {
     QMutexLocker locker(&mutex_);
     return audio_clock_us_;
@@ -179,16 +179,19 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                     return 0;
                 }
                 int out_samples = 0;
-                int buf_size = resampler_->getOutputBufferSize(frame->nb_samples);
+                int buf_size = resampler_->outputBufferSize(frame->nb_samples);
 
-                audio_buf_ = (uint8_t*)realloc(audio_buf_, buf_size);
-                if(!audio_buf_){
+                uint8_t* tmp = (uint8_t*)realloc(audio_buf_, buf_size);
+                if(!tmp){
+                    free(audio_buf_);
+                    audio_buf_ = nullptr;
                     GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
+                audio_buf_ = tmp;
 
                 resampler_->resample(frame, &audio_buf_, &out_samples);
-                audio_buf_size_ = resampler_->getOutputBufferSize(out_samples);
+                audio_buf_size_ = resampler_->outputBufferSize(out_samples);
             } else {
                 audio_buf_size_ = av_samples_get_buffer_size(
                     nullptr, frame->ch_layout.nb_channels,
@@ -199,11 +202,14 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
                     return 0;
                 }
 
-                audio_buf_ = (uint8_t*)realloc(audio_buf_, audio_buf_size_);
-                if(!audio_buf_){
+                uint8_t* tmp = (uint8_t*)realloc(audio_buf_, audio_buf_size_);
+                if(!tmp){
+                    free(audio_buf_);
+                    audio_buf_ = nullptr;
                     GlobalPool::getFramePool().recycle(frame);
                     return 0;
                 }
+                audio_buf_ = tmp;
 
                 if(!frame->data[0]){
                     GlobalPool::getFramePool().recycle(frame);
@@ -213,10 +219,12 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
             }
 
             audio_buf_index_ = 0;
-            {
-                QMutexLocker locker(&mutex_);
-                audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
-            }
+            // {
+            //     QMutexLocker locker(&mutex_);
+            //     audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
+            // }
+            audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
+            //qDebug() << "audio pts : " << audio_clock_us_;
             sync_clock_->set_audio_clock(audio_clock_us_);
 
 

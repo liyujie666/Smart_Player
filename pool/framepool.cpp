@@ -1,16 +1,20 @@
+
 #include "framepool.h"
 #include <QDebug>
-FramePool::FramePool(size_t maxSize) : maxSize_(maxSize) {}
+FramePool::FramePool(size_t maxSize) : maxSize_(maxSize) {
+    for (auto& p : ring_) p = nullptr;
+}
 
 FramePool::~FramePool() {
     clear();
 }
 
 AVFrame* FramePool::get() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!pool_.empty()) {
-        AVFrame* frame = pool_.front();
-        pool_.pop();
+    size_t r = ringRead_.load(std::memory_order_acquire);
+    if (r != ringWrite_.load(std::memory_order_acquire)) {
+        AVFrame* frame = ring_[r % kRingCapacity];
+        ring_[r % kRingCapacity] = nullptr;
+        ringRead_.store(r + 1, std::memory_order_release);
         av_frame_unref(frame);
         getCount_++;
         return frame;
@@ -21,56 +25,51 @@ AVFrame* FramePool::get() {
 
 void FramePool::recycle(AVFrame* frame) {
     if (!frame) return;
-    std::lock_guard<std::mutex> lock(mutex_);
     av_frame_unref(frame);
-    if (pool_.size() >= maxSize_) {
+    size_t w = ringWrite_.load(std::memory_order_relaxed);
+    size_t r = ringRead_.load(std::memory_order_relaxed);
+    size_t count = (w >= r) ? (w - r) : (kRingCapacity - r + w);
+    if (count >= maxSize_) {
         freeCount_++;
         av_frame_free(&frame);
     } else {
-        pool_.push(frame); 
+        ring_[w % kRingCapacity] = frame;
+        ringWrite_.store(w + 1, std::memory_order_release);
         recycleCount_++;
     }
 }
 
-void FramePool::setMaxSize(size_t newMaxSize)
-{
-    if (newMaxSize <= 0) return;
-    std::lock_guard<std::mutex> lock(mutex_);
+void FramePool::setMaxSize(size_t newMaxSize) {
+    if (newMaxSize == 0) return;
     maxSize_ = newMaxSize;
-    while (pool_.size() > maxSize_) {
-        AVFrame* frame = pool_.front();
-        pool_.pop();
-        av_frame_free(&frame);
-        freeCount_++;
-    }
-
 }
 
-size_t FramePool::getMaxSize()
-{
-    std::lock_guard<std::mutex> lock(mutex_);
+size_t FramePool::maxSize() const {
     return maxSize_;
 }
 
 void FramePool::clear() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    while (!pool_.empty()) {
-        AVFrame* frame = pool_.front();
-        pool_.pop();
-        if (!frame || (frame->data[0] == nullptr && frame->buf[0] == nullptr)) {
-            continue;
+    size_t r = ringRead_.load(std::memory_order_acquire);
+    size_t w = ringWrite_.load(std::memory_order_acquire);
+    while (r != w) {
+        AVFrame* frame = ring_[r % kRingCapacity];
+        if (frame) {
+            av_frame_free(&frame);
+            freed_++;
         }
-        av_frame_free(&frame);
-        freed_++;
+        r++;
     }
+    ringRead_.store(0, std::memory_order_release);
+    ringWrite_.store(0, std::memory_order_release);
 }
 
-void FramePool::printStats()
-{
-    std::lock_guard<std::mutex> lock(mutex_);
-    qDebug() << "[FramePool] Allocated:" << createCount_
-             << " Get:" << getCount_
-             << " Recycled:" << recycleCount_
-             << "Freed:" << freeCount_
-             << " In Pool:" << pool_.size();
+void FramePool::printStats() {
+    size_t r = ringRead_.load(std::memory_order_relaxed);
+    size_t w = ringWrite_.load(std::memory_order_relaxed);
+    size_t inPool = (w >= r) ? (w - r) : (kRingCapacity - r + w);
+    qDebug() << "[FramePool] Allocated:" << createCount_.load()
+             << " Get:" << getCount_.load()
+             << " Recycled:" << recycleCount_.load()
+             << " Freed:" << freeCount_.load()
+             << " In Pool:" << inPool;
 }

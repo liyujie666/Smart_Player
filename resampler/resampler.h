@@ -37,10 +37,10 @@ public:
     int resample(AVFrame *inFrame, uint8_t **outData, int *outSamples);
     void close();
 
-    AudioSpec getInputSpec() const;
-    AudioSpec getOutputSpec() const;
-    SwrContext* getSwrContext() const;
-    int getOutputBufferSize(int samples) const;
+    AudioSpec inputSpec() const;
+    AudioSpec outputSpec() const;
+    SwrContext* swrContext() const;
+    int outputBufferSize(int samples) const;
 
 private:
     void initChannelLayout(AVChannelLayout *chLayout, int chs);

@@ -215,12 +215,12 @@ QImage PictureCreator::convertFrameToQImage(AVFrame *frame, int maxWidth, int ma
     return copy;
 }
 
-int PictureCreator::getDuration()
+int PictureCreator::duration()
 {
     return duration_;
 }
 
-int PictureCreator::getDuration(const QString &videoPath)
+int PictureCreator::duration(const QString &videoPath)
 {
     AVFormatContext *fmtCtx = nullptr;
     if (avformat_open_input(&fmtCtx, videoPath.toStdString().c_str(), nullptr, nullptr) < 0) {

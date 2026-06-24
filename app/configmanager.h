@@ -44,6 +44,9 @@ public:
     int getSaturation() const;
     void setSaturation(int value);
 
+    int getSubtitleFontSize() const;
+    void setSubtitleFontSize(int size);
+
     int getVideoSizeMode() const;
     void setVideoSizeMode(int mode);
 

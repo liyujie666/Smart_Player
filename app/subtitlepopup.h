@@ -2,8 +2,9 @@
 #define SUBTITLEPOPUP_H
 
 #include <QWidget>
-
+#include <QLabel>
 class QPushButton;
+class QSlider;
 
 class SubtitlePopup : public QWidget
 {
@@ -13,6 +14,11 @@ public:
 
     QPushButton *realtimeBtn_;
     QPushButton *translateBtn_;
+    QSlider *fontSizeSlider_;
+    QLabel *fontSizeLabel_;
+
+signals:
+    void fontSizeChanged(int size);
 };
 
 #endif // SUBTITLEPOPUP_H

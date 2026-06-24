@@ -116,11 +116,11 @@ int Demuxer::readPacket(AVPacket *pkt)
     return ret;
 }
 
-int Demuxer::seek(int64_t timestamp_sec, bool useVideoStream)
+int Demuxer::seek(int64_t ts_us, bool useVideoStream)
 {
     if (!isOpened_) return AVERROR(EINVAL);
 
-    QWriteLocker locker(&lock_);
+    //QWriteLocker locker(&lock_);
     int streamIdx = -1;
 
     if (useVideoStream && videoStreamIndex_ >= 0) {
@@ -132,8 +132,8 @@ int Demuxer::seek(int64_t timestamp_sec, bool useVideoStream)
     }
 
     int64_t target_ts = av_rescale_q(
-        timestamp_sec,
-        AV_TIME_BASE_Q,
+        ts_us,
+        AV_TIME_BASE_Q,  // 输入时间基：1毫秒/单位
         fmtCtx_->streams[streamIdx]->time_base
         );
 

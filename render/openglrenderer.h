@@ -7,6 +7,7 @@
 #include <QOpenGLBuffer>
 #include <QOpenGLTexture>
 #include <QOpenGLFunctions>
+#include <QMutex>
 
 extern"C"{
 #include <libavformat/avformat.h>
@@ -45,6 +46,7 @@ public:
     void setBrightness(float value);
     void setContrast(float value);
     void setSaturation(float value);
+    void setSubtitleFontSize(int size);
 
 protected:
     void initializeGL() override;
@@ -64,8 +66,11 @@ private:
     };
 
     QOpenGLShaderProgram* program_ = nullptr;
+    QOpenGLShaderProgram* subProgram_ = nullptr;
     QOpenGLVertexArrayObject* vao_ = nullptr;
+    QOpenGLVertexArrayObject* subVao_ = nullptr;
     QOpenGLBuffer* vbo_ = nullptr;
+    QOpenGLBuffer* subVbo_ = nullptr;
 
     QOpenGLTexture* yTexture_ = nullptr;
     QOpenGLTexture* uTexture_ = nullptr;
@@ -96,6 +101,9 @@ private:
     QString currentSubtitle_;
     static constexpr int SUBTITLE_HEIGHT = 60;
     static constexpr float SUBTITLE_BG_ALPHA = 0.7f;
+    int subtitleFontSize_ = 26;
+    bool subtitleDirty_ = false;
+    QMutex subtitleMutex_;
 };
 
 #endif // OPENGLRENDERER_H

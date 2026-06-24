@@ -1,5 +1,6 @@
 #include "playercore.h"
 #include "pool/gloabalpool.h"
+#include "app/configmanager.h"
 #include <QDebug>
 #include <QImage>
 #include <QDir>
@@ -214,7 +215,6 @@ void PlayerCore::initVideoModule()
     if (converter_->init(in_spec, out_spec) < 0) {
         qDebug() << "视频转换器初始化失败";
         delete converter_; converter_ = nullptr;
-        return;
     }
 
     qDebug() << "=== 视频模块初始化完成 ===";
@@ -373,16 +373,17 @@ void PlayerCore::setDecodeType(const QString &decoder)
     decoder_type_ = decoder;
 }
 
-void PlayerCore::seek(int64_t pos_sec)
+void PlayerCore::seek(int64_t pos_us)
 {
-    if (duration_ms_ <= 0 || pos_sec < 0) return;
+    if (duration_ms_ <= 0 || pos_us < 0) return;
 
+    {
+        QMutexLocker lock(&mutex_);
+        is_seek_ = true;
+        cond_.wakeAll();
+    }
 
-    QMutexLocker lock(&mutex_);
-    is_seek_ = true;
-    cond_.wakeAll();
-
-    demuxer_->seek(pos_sec);
+    demuxer_->seek(pos_us);
 
     clearAllQueues();
 
@@ -394,7 +395,7 @@ void PlayerCore::seek(int64_t pos_sec)
 
     is_seek_ = false;
     cond_.wakeAll();
-    qDebug() << "Seek完成(秒):" << pos_sec;
+    qDebug() << "Seek完成(秒):" << pos_us;
 
     // 通知 UI 面板（文稿/AI 总结）位置已更新——即使暂停中也需要立刻重染色
     emit timeChanged();
@@ -441,8 +442,13 @@ void PlayerCore::setAsrEnabled(bool enabled)
 
     if (enabled) {
         if(asr_manager_->isModelPathEmpty()) {
-            qDebug() << "model path is empty";
-            return;
+            QString savedPath = ConfigManager::instance().getModelPath();
+            if (!savedPath.isEmpty()) {
+                setModelPath(savedPath);
+            } else {
+                qDebug() << "model path is empty, please set in settings";
+                return;
+            }
         }
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
         if(asr_manager_->init(file_url_, demuxer_->mediaType(), as)){
@@ -459,6 +465,8 @@ void PlayerCore::setModelPath(const QString &path)
     if(path.isEmpty()) return;
     model_path_ = path;
     asr_manager_->setModelPath(model_path_);
+    // 立即在后台开始预加载模型（不会阻塞调用线程）
+    asr_manager_->warmUp();
 }
 
 bool PlayerCore::isAsrEnabled() const
@@ -484,15 +492,20 @@ void PlayerCore::demuxThreadFunc()
 
         if (is_exit_) break;
 
-        if (demuxer_->hasStream(AVMEDIA_TYPE_AUDIO)) {
-            while (audio_pkt_queue_->Size() >= MAX_AUDIO_PKT && !is_exit_ && !is_seek_) {
-                QThread::msleep(10);
-            }
-        }
-        if (demuxer_->hasStream(AVMEDIA_TYPE_VIDEO)) {
-            while (video_pkt_queue_->Size() >= MAX_VIDEO_PKT && !is_exit_ && !is_seek_) {
-                QThread::msleep(10);
-            }
+        // 背压：只有当「所有存在的流」队列都已满时才睡眠等待。
+        // 不能像以前那样先串行等音频满、再等视频满——否则音频队列一满就
+        // 把整个 demux 线程卡死，连带饿死视频包供给（seek 时尤其明显：
+        // 视频解码要吞掉关键帧到目标帧之间的大量帧，视频包消耗极快，
+        // 而音频包小、消费慢，音频队列很容易先满）。
+        const bool hasA = demuxer_->hasStream(AVMEDIA_TYPE_AUDIO);
+        const bool hasV = demuxer_->hasStream(AVMEDIA_TYPE_VIDEO);
+        while (!is_exit_ && !is_seek_)
+        {
+            const bool audioFull = !hasA || audio_pkt_queue_->Size() >= MAX_AUDIO_PKT;
+            const bool videoFull = !hasV || video_pkt_queue_->Size() >= MAX_VIDEO_PKT;
+            // 任一仍有空间就继续读包，保证每条流都能持续被喂数据
+            if (!videoFull || !audioFull) break;
+            QThread::msleep(1);
         }
 
         av_packet_unref(pkt);
@@ -564,12 +577,12 @@ void PlayerCore::audioDecodeThreadFunc()
 
         // 解码
         int ret = audio_decoder_->decode(pkt, decoded_frame);
-        //av_packet_free(&pkt);
         GlobalPool::getPacketPool().recycle(pkt);
 
         if (ret == AVERROR(EAGAIN)) {
             continue;
         }
+
         if (ret == AVERROR_EOF) {
             qDebug() << "音频解码完成（EOF）";
             is_exit_ = true;
@@ -581,22 +594,9 @@ void PlayerCore::audioDecodeThreadFunc()
             continue;
         }
 
-        // qDebug() << "==================== 音频帧：滤镜前（原始）====================";
-        // qDebug() << "采样率:" << decoded_frame->sample_rate
-        //          << "样本数:" << decoded_frame->nb_samples
-        //          << "声道数:" << decoded_frame->ch_layout.nb_channels;
-        // if (decoded_frame->pts != AV_NOPTS_VALUE) {
-        //     qDebug() << "PTS:" << decoded_frame->pts;
-        // } else {
-        //     qDebug() << "PTS: 无效(AV_NOPTS_VALUE)";
-        // }
-        // qDebug() << "==============================================================";
-
-
         int64_t pts = (decoded_frame->pts == AV_NOPTS_VALUE) ? NAN : decoded_frame->pts;
-        //double duration = av_q2d((AVRational) { decoded_frame->nb_samples, decoded_frame->sample_rate });
         double duration = av_q2d(AVRational{ decoded_frame->nb_samples, decoded_frame->sample_rate });
-        // sendFrameToAsr(decoded_frame);
+
         asr_manager_->sendAudioFrame(decoded_frame);
         // 倍速滤镜处理
         if (audio_filter_ && audio_filter_->isInitialized())
@@ -612,17 +612,6 @@ void PlayerCore::audioDecodeThreadFunc()
         {
             av_frame_move_ref(filtered_frame, decoded_frame);
         }
-
-        // qDebug() << "==================== 音频帧：滤镜后（倍速）====================";
-        // qDebug() << "采样率:" << filtered_frame->sample_rate
-        //          << "样本数:" << filtered_frame->nb_samples
-        //          << "声道数:" << filtered_frame->ch_layout.nb_channels;
-        // if (filtered_frame->pts != AV_NOPTS_VALUE) {
-        //     qDebug() << "PTS:" << filtered_frame->pts;
-        // } else {
-        //     qDebug() << "PTS: 无效(AV_NOPTS_VALUE)";
-        // }
-        // qDebug() << "==============================================================";
 
         //使用原来的pts
         filtered_frame->pts = pts;
@@ -656,6 +645,7 @@ void PlayerCore::videoDecodeThreadFunc()
         mutex_.lock();
         if (state_ == Paused || is_seek_)
         {
+            qDebug() << "video decode thread paused";
             cond_.wait(&mutex_);
         }
         mutex_.unlock();
@@ -665,10 +655,13 @@ void PlayerCore::videoDecodeThreadFunc()
         while (video_frame_queue_->Size() >= MAX_VIDEO_FRAME && !is_exit_ && !is_seek_) {
             QThread::msleep(5);
         }
-
+        //qDebug() << "video queue size : " << video_pkt_queue_->Size();
         AVPacket* pkt = video_pkt_queue_->Pop(10);
-        if (!pkt) continue;
-
+        if (!pkt) {
+            //qDebug() << "pkt is null";
+            continue;
+        }
+        //qDebug() << "vpkt queue poped(size:" << video_pkt_queue_->Size() << ")";
         int ret = video_decoder_->decode(pkt, decoded_frame);
         //av_packet_free(&pkt);
         GlobalPool::getPacketPool().recycle(pkt);
@@ -732,10 +725,11 @@ void PlayerCore::videoRenderThreadFunc()
         // 视频pts
         AVStream* vs = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
         int64_t video_pts_us = av_rescale_q(frame->pts, vs->time_base, {1,1000000});
-
+        //qDebug() << "video pts : " << video_pts_us;
 
         // 计算延迟
         int64_t delay = sync_clock_->calc_display_delay(video_pts_us);
+        //qDebug() << "video delay:" << delay;
         if (delay > 0) {
             QThread::usleep(delay);
             //qDebug() << "video thread sleeping:" << delay;
@@ -749,26 +743,29 @@ void PlayerCore::videoRenderThreadFunc()
 
         int w = frame->width;
         int h = frame->height;
-        QByteArray yuv_data;
         AVPixelFormat fmt = (AVPixelFormat)frame->format;
+        QByteArray frame_data;
 
         if (fmt == AV_PIX_FMT_YUV420P) {
             int y_size = w * h;
             int u_size = w * h / 4;
             int v_size = w * h / 4;
-            yuv_data.append((const char*)frame->data[0], y_size);
-            yuv_data.append((const char*)frame->data[1], u_size);
-            yuv_data.append((const char*)frame->data[2], v_size);
+            frame_data.reserve(y_size + u_size + v_size);
+            frame_data.append((const char*)frame->data[0], y_size);
+            frame_data.append((const char*)frame->data[1], u_size);
+            frame_data.append((const char*)frame->data[2], v_size);
 
-            emit frameYuv420pDecoded(yuv_data, w, h);
+            emit frameYuv420pDecoded(frame_data, w, h);
         }
         else if (fmt == AV_PIX_FMT_NV12) {
-            yuv_data.clear();
+            // NV12: Y plane (w*h) + UV plane (w*h/2)
+            int buf_size = w * h * 3 / 2;
+            frame_data.reserve(buf_size);
             // 拷贝Y平面
             const uint8_t* y_buf = frame->data[0];
             int y_stride = frame->linesize[0];
             for (int i = 0; i < h; i++) {
-                yuv_data.append((const char*)y_buf, w);
+                frame_data.append((const char*)y_buf, w);
                 y_buf += y_stride;
             }
             // 拷贝UV交织平面
@@ -777,22 +774,23 @@ void PlayerCore::videoRenderThreadFunc()
             int uv_h = h / 2;
             int uv_w = w / 2;
             for (int i = 0; i < uv_h; i++) {
-                yuv_data.append((const char*)uv_buf, uv_w * 2); // NV12是RG双通道，*2
+                frame_data.append((const char*)uv_buf, uv_w * 2); // NV12是RG双通道，*2
                 uv_buf += uv_stride;
             }
 
-            emit frameNv12Decoded(yuv_data, w, h);
+            emit frameNv12Decoded(frame_data, w, h);
         }else if (fmt == AV_PIX_FMT_RGBA || fmt == AV_PIX_FMT_BGRA) {
-            QByteArray rgbData;
+            int buf_size = w * h * 4;
+            frame_data.reserve(buf_size);
             const uint8_t* data = frame->data[0];
             int stride = frame->linesize[0];
 
             for (int i = 0; i < h; i++) {
-                rgbData.append((const char*)data, w * 4); // RGBA=4字节
+                frame_data.append((const char*)data, w * 4); // RGBA=4字节
                 data += stride;
             }
 
-            emit frameRGBADecoded(rgbData, w, h);
+            emit frameRGBADecoded(frame_data, w, h);
         }
         else {
             qWarning() << "不支持的视频格式：" << av_get_pix_fmt_name(fmt);
@@ -804,7 +802,7 @@ void PlayerCore::videoRenderThreadFunc()
             need_screenshot_ = false;
             screenshot_busy_ = true;
 
-            QByteArray frame_copy = yuv_data;
+            QByteArray frame_copy = frame_data;
             int w_copy = w;
             int h_copy = h;
             AVPixelFormat fmt_copy = fmt;
@@ -913,7 +911,7 @@ double PlayerCore::getSpeedFromIndex(int speedIndex)
 void PlayerCore::checkAndUpdateSubtitle()
 {
     if (state_ == Stopped || state_ == Paused) return;
-    double now = getCurrentTimeSec();
+    double now = currentTimeSec();
     SubtitleItem sub = asr_manager_->queue()->getCurrent(now);
     if (sub.text != current_display_sub_.text) {
         current_display_sub_ = sub;
@@ -970,12 +968,12 @@ void PlayerCore::releaseResources()
     qDebug() << "资源已释放";
 }
 
-int64_t PlayerCore::getDuration() const
+int64_t PlayerCore::duration() const
 {
     return duration_ms_;
 }
 
-int64_t PlayerCore::getCurrentPos() const
+int64_t PlayerCore::currentPos() const
 {
     if (hasAudio_) {
         // 音视频/纯音频
@@ -987,7 +985,7 @@ int64_t PlayerCore::getCurrentPos() const
     return 0;
 }
 
-double PlayerCore::getCurrentTimeSec() const
+double PlayerCore::currentTimeSec() const
 {
     if (hasAudio_)
         return sync_clock_->get_audio_clock() / 1000000.0;
@@ -996,23 +994,24 @@ double PlayerCore::getCurrentTimeSec() const
     return 0.0;
 }
 
-Demuxer::MediaType PlayerCore::getMediaType() const
+Demuxer::MediaType PlayerCore::mediaType() const
 {
     if(demuxer_) return demuxer_->mediaType();
+    return Demuxer::MediaType::FILE_TYPE;
 }
 
-PlayerCore::State PlayerCore::getState() const
+PlayerCore::State PlayerCore::state() const
 {
     return state_;
 }
 
-AVFormatContext *PlayerCore::getAVFormatContext() const
+AVFormatContext *PlayerCore::avFormatContext() const
 {
     if(!demuxer_) return nullptr;
     return demuxer_->formatContext();
 }
 
-QString PlayerCore::getFileUrl() const
+QString PlayerCore::fileUrl() const
 {
     return file_url_;
 }

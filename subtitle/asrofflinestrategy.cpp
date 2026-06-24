@@ -38,12 +38,25 @@ bool AsrOfflineStrategy::init(const QString& url, AVStream*, SubtitleQueue* queu
 
     AsrConfig cfg;
     cfg.model_path = model_path_.toStdString();
-    return worker_->init(cfg);
+
+    // 优先从模型缓存获取已加载的上下文
+    whisper_context* cached_ctx = nullptr;
+    if (AsrModelCache::instance().tryAcquire(cached_ctx)) {
+        qDebug() << "[AsrOfflineStrategy] using cached whisper context";
+        if (worker_->initWithContext(cached_ctx, cfg)) {
+            uses_cached_model_ = true;
+            return true;
+        }
+        AsrModelCache::instance().release();
+        qDebug() << "[AsrOfflineStrategy] failed to init with cached context, loading own";
+    }
+
+    if (!worker_->init(cfg)) return false;
+    return true;
 }
 
 void AsrOfflineStrategy::start() {
-    if (running_) return;
-    running_ = true;
+    if (running_.exchange(true)) return;
     thread_ = std::thread(&AsrOfflineStrategy::run, this);
 }
 
@@ -57,17 +70,20 @@ void AsrOfflineStrategy::reset() {
 
 }
 void AsrOfflineStrategy::release() {
+    if (worker_) worker_->release();
+    if (uses_cached_model_) {
+        AsrModelCache::instance().release();
+        uses_cached_model_ = false;
+    }
     res_.reset();
-    if(dec_){
+    if (dec_) {
         dec_->close();
         dec_.reset();
     }
-
     if (demux_) {
         demux_->close();
         demux_.reset();
     }
-    worker_->release();
 }
 
 void AsrOfflineStrategy::run() {
@@ -75,7 +91,6 @@ void AsrOfflineStrategy::run() {
     std::vector<float> pcm;
     double start_sec = 0;
     auto audio_idx = demux_->getStreamIndex(AVMEDIA_TYPE_AUDIO);
-    auto as = demux_->getStream(AVMEDIA_TYPE_AUDIO);
 
     demux_->seek(0);
     dec_->flush();
@@ -87,7 +102,7 @@ void AsrOfflineStrategy::run() {
         if (pkt->stream_index != audio_idx) { av_packet_unref(pkt); continue; }
         if (dec_->decode(pkt, frame) != 0) { av_packet_unref(pkt); continue; }
 
-        uint8_t* buf = (uint8_t*)av_malloc(res_->getOutputBufferSize(frame->nb_samples));
+        uint8_t* buf = (uint8_t*)av_malloc(res_->outputBufferSize(frame->nb_samples));
         int samples = 0;
         if (res_->resample(frame, &buf, &samples) >= 0 && samples > 0) {
             pcm.insert(pcm.end(), (float*)buf, (float*)buf + samples);

@@ -15,7 +15,7 @@ extern "C"
 class Demuxer : public QObject
 {
     Q_OBJECT
-    Q_DISABLE_COPY(Demuxer)
+    Q_DISABLE_COPY_MOVE(Demuxer)
 
 public:
     enum class MediaType {
@@ -33,7 +33,7 @@ public:
     int open(const char *filename);
     void close();
     int readPacket(AVPacket *pkt);
-    int seek(int64_t timestamp, bool videoSeek = true);
+    int seek(int64_t ts_us, bool videoSeek = true);
     
     // 获取媒体流信息
     AVStream* getStream(AVMediaType type) const;

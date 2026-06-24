@@ -20,7 +20,7 @@ class AudioFilter : public QObject {
     Q_DISABLE_COPY(AudioFilter)
 
 public:
-    enum SpeedIndex {
+    enum class SpeedIndex : int {
         Speed_0_5 = 1,
         Speed_1_0 = 2,
         Speed_1_5 = 3,
@@ -36,8 +36,8 @@ public:
     void close();
     void flush();
 
-    double getSpeedValue() const;
-    SpeedIndex getSpeedIndex() const;
+    double speedValue() const;
+    SpeedIndex speedIndex() const;
     bool isInitialized() const;
 
 private:

@@ -551,7 +551,7 @@ public:
         label_5->setText(QCoreApplication::translate("settingDialog", "\347\224\273\351\235\242\345\260\272\345\257\270\357\274\232", nullptr));
         defaultSize->setText(QCoreApplication::translate("settingDialog", "\351\273\230\350\256\244", nullptr));
         expandSize->setText(QCoreApplication::translate("settingDialog", "\347\274\251\346\224\276\345\241\253\345\205\205", nullptr));
-        label_6->setText(QCoreApplication::translate("settingDialog", "\344\277\235\345\255\230\350\267\257\345\276\204\357\274\232", nullptr));
+        label_6->setText(QCoreApplication::translate("settingDialog", "\346\210\252\345\233\276\350\267\257\345\276\204\357\274\232", nullptr));
         saveFilePath->setText(QString());
         saveFilePath->setPlaceholderText(QString());
         selectPathBtn->setText(QCoreApplication::translate("settingDialog", "\350\207\252\345\256\232\344\271\211", nullptr));

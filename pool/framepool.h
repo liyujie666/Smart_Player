@@ -1,9 +1,8 @@
 #ifndef FRAMEPOOL_H
 #define FRAMEPOOL_H
 
-#include <queue>
-#include <mutex>
 #include <atomic>
+#include <cstddef>
 extern "C" {
 #include <libavutil/frame.h>
 }
@@ -17,13 +16,16 @@ public:
     void recycle(AVFrame* frame);
 
     void setMaxSize(size_t newMaxSize);
-    size_t getMaxSize();
+    size_t maxSize() const;
     void clear();
     void printStats();
 
 private:
-    std::queue<AVFrame*> pool_;
-    std::mutex mutex_;
+    static constexpr size_t kRingCapacity = 256;
+
+    AVFrame* ring_[kRingCapacity];
+    std::atomic<size_t> ringWrite_{0};
+    std::atomic<size_t> ringRead_{0};
     size_t maxSize_;
 
     std::atomic<int> createCount_{0};

@@ -24,6 +24,7 @@
 class PlayerCore : public QObject
 {
     Q_OBJECT
+    Q_DISABLE_COPY_MOVE(PlayerCore)
 public:
     // 播放器状态
     enum State {
@@ -65,13 +66,13 @@ public:
 
 
     // 获取信息
-    int64_t getDuration() const;          // 总时长(ms)
-    int64_t getCurrentPos() const;        // 当前播放位置(ms)
-    double getCurrentTimeSec() const;
-    State getState() const;               // 获取状态
-    Demuxer::MediaType getMediaType() const;
-    AVFormatContext* getAVFormatContext() const;
-    QString getFileUrl() const;
+    int64_t duration() const;          // 总时长(ms)
+    int64_t currentPos() const;        // 当前播放位置(ms)
+    double currentTimeSec() const;
+    State state() const;               // 获取状态
+    Demuxer::MediaType mediaType() const;
+    AVFormatContext* avFormatContext() const;
+    QString fileUrl() const;
     bool hasAudio() const;
     bool hasVideo() const;
 signals:
@@ -98,7 +99,6 @@ private:
     void clearAllQueues();        // 清空所有队列(Seek/Stop用)
     void initAudioModule();       // 初始化音频模块(重采样/滤镜/输出)
     void initVideoModule();       // 初始化视频模块(转换器)
-    void sendFrameToAsr(AVFrame* frame);
     void onSubtitleReady(const SubtitleItem& item);
     void saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format);
     double getSpeedFromIndex(int speedIndex);
@@ -130,8 +130,8 @@ private:
     AVFrameQueue* audio_frame_queue_ = nullptr;
     AVFrameQueue* video_frame_queue_ = nullptr;
 
-    static constexpr int MAX_AUDIO_PKT = 5;
-    static constexpr int MAX_VIDEO_PKT = 10;
+    static constexpr int MAX_AUDIO_PKT = 16;
+    static constexpr int MAX_VIDEO_PKT = 30;
     static constexpr int MAX_AUDIO_FRAME = 8;
     static constexpr int MAX_VIDEO_FRAME = 15;
     // 线程

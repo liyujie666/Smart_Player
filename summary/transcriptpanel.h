@@ -25,9 +25,9 @@ class QRect;
 class TranscriptPanel;
 
 // 一行条目类型
-enum RowType {
-    Row_ChapterHeader,
-    Row_Paragraph
+enum class RowType : int {
+    ChapterHeader,
+    Paragraph
 };
 
 // 字/词级时间戳（v3 逐字变蓝）
@@ -52,7 +52,7 @@ struct SubtitleLineCache {
 //                     - m_firstSubtitleIndex 是 m_subtitleIndices[0]，
 //                       保留旧字段以便 findRowIndexBySubtitle / 染色逻辑最小改动
 struct RowItem {
-    RowType type = Row_Paragraph;
+    RowType type = RowType::Paragraph;
     int chapterIndex = -1;
     int subtitleIndex = -1;        // 兼容旧：= firstSubtitleIndex
     int firstSubtitleIndex = -1;   // 段首句索引

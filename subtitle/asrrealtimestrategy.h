@@ -5,6 +5,7 @@
 #include "resampler/resampler.h"
 #include "utils/audioringbuffer.h"
 #include <thread>
+#include <atomic>
 
 class AsrWorker;
 class AsrRealtimeStrategy : public IAsrStrategy {
@@ -18,7 +19,7 @@ public:
     void reset() override;
     void sendAudio(AVFrame* frame) override;
     void release() override;
-    void setModel(const QString& path) { model_path_ = path; }
+    void setModel(const QString& path) override { model_path_ = path; }
 
 private:
     void run();
@@ -30,9 +31,10 @@ private:
     std::unique_ptr<Resampler> resampler_;
     AudioPcmRingBuffer ring_;
     std::thread thread_;
-    bool running_ = false;
+    std::atomic<bool> running_{false};
     AVRational tb_{0,0};
     std::string last_text_;
+    bool uses_cached_model_ = false;
 };
 
 #endif // ASRREALTIMESTRATEGY_H

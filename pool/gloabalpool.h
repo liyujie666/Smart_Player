@@ -24,11 +24,11 @@ public:
     }
 
     static size_t getFramePoolMaxSize() {
-        return getFramePool().getMaxSize();
+        return getFramePool().maxSize();
     }
 
     static size_t getPacketPoolMaxSize() {
-        return getPacketPool().getMaxSize();
+        return getPacketPool().maxSize();
     }
 };
 #endif // GLOABALPOOL_H

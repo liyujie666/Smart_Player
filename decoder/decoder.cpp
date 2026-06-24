@@ -111,37 +111,87 @@ int Decoder::initHardware(AVHWDeviceType hwType)
     return 0;
 }
 
+
+// int Decoder::decode(AVPacket *pkt, AVFrame *&outFrame)
+// {
+//     if (!isOpened_) return AVERROR(EINVAL);
+//     av_frame_unref(outFrame);
+
+//     QReadLocker locker(&lock_);
+//     // 发送包
+//     int ret = avcodec_send_packet(codecCtx_, pkt);
+
+//     if(ret == AVERROR(EAGAIN)){
+//         qDebug() << "send pkt: AVERROR(EAGAIN)";
+//         return ret;
+//     }
+
+//     if(ret == AVERROR_EOF) return ret;
+//     if (ret < 0) { FF_CHECK(ret, avcodec_send_packet); return ret; }
+
+//     // 接收帧
+//     ret = avcodec_receive_frame(codecCtx_, outFrame);
+//     if(ret == AVERROR(EAGAIN)){
+//         qDebug() << "receive frame : AVERROR(EAGAIN)";
+//         return ret;
+//     }
+
+//     if(ret == AVERROR_EOF) return ret;
+//     if (ret < 0) { FF_CHECK(ret, avcodec_receive_frame); return ret; }
+
+//     // 硬解帧转CPU
+//     if (useHardware_ && mediaType_ == AVMEDIA_TYPE_VIDEO) {
+//         ret = hwFrameTransfer(outFrame, hwTmpFrame_);
+//         FF_CHECK(ret, hwFrameTransfer);
+//         if (ret >= 0) {
+//             av_frame_unref(outFrame);
+//             av_frame_move_ref(outFrame, hwTmpFrame_);
+//         } else {
+//             av_frame_unref(outFrame);
+//             return ret;
+//         }
+//     }
+
+//     return 0;
+// }
+
 int Decoder::decode(AVPacket *pkt, AVFrame *&outFrame)
 {
     if (!isOpened_) return AVERROR(EINVAL);
     av_frame_unref(outFrame);
-
-    QReadLocker locker(&lock_);
-    // 发送包
+    QWriteLocker locker(&lock_);
     int ret = avcodec_send_packet(codecCtx_, pkt);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) return ret;
-    if (ret < 0) { FF_CHECK(ret, avcodec_send_packet); return ret; }
-
-    // 接收帧
-    ret = avcodec_receive_frame(codecCtx_, outFrame);
-    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) return ret;
-    if (ret < 0) { FF_CHECK(ret, avcodec_receive_frame); return ret; }
-
-    // 硬解帧转CPU
-    if (useHardware_ && mediaType_ == AVMEDIA_TYPE_VIDEO) {
-        ret = hwFrameTransfer(outFrame, hwTmpFrame_);
-        FF_CHECK(ret, hwFrameTransfer);
-        if (ret >= 0) {
-            av_frame_unref(outFrame);
-            av_frame_move_ref(outFrame, hwTmpFrame_);
-        } else {
-            av_frame_unref(outFrame);
-        }
+    if (ret == AVERROR(EAGAIN)) {
+        // 发送需要等待，说明解码器内部还有未取走的帧，先取帧
+    } else if (ret == AVERROR_EOF) {
+        return ret;
+    } else if (ret < 0) {
+        FF_CHECK(ret, avcodec_send_packet);
+        return ret;
     }
-
-    return 0;
+    // 循环取出所有可取的帧
+    while (true) {
+        ret = avcodec_receive_frame(codecCtx_, outFrame);
+        if (ret == AVERROR(EAGAIN)) {
+            // 没有更多帧了，发送端可以继续
+            return AVERROR(EAGAIN);
+        }
+        if (ret == AVERROR_EOF) return ret;
+        if (ret < 0) { FF_CHECK(ret, avcodec_receive_frame); return ret; }
+        if (useHardware_ && mediaType_ == AVMEDIA_TYPE_VIDEO) {
+            ret = hwFrameTransfer(outFrame, hwTmpFrame_);
+            FF_CHECK(ret, hwFrameTransfer);
+            if (ret >= 0) {
+                av_frame_unref(outFrame);
+                av_frame_move_ref(outFrame, hwTmpFrame_);
+            } else {
+                av_frame_unref(outFrame);
+                return ret;
+            }
+        }
+        return 0;  // 返回第一个有效帧，调用者负责 unref
+    }
 }
-
 void Decoder::useHardware(bool isUse)
 {
     useHardware_.store(isUse);

@@ -3,10 +3,12 @@
 
 #include "iasrstrategy.h"
 #include "asrworker.h"
+#include "asrmodelcache.h"
 #include "demuxer/demuxer.h"
 #include "decoder/decoder.h"
 #include "resampler/resampler.h"
 #include <thread>
+#include <atomic>
 
 class AsrOfflineStrategy : public IAsrStrategy {
 public:
@@ -18,7 +20,7 @@ public:
     void stop() override;
     void reset() override;
     void release() override;
-    void setModel(const QString& path) { model_path_ = path; }
+    void setModel(const QString& path) override { model_path_ = path; }
 
 private:
     void run();
@@ -31,7 +33,8 @@ private:
     std::unique_ptr<Decoder> dec_;
     std::unique_ptr<Resampler> res_;
     std::thread thread_;
-    bool running_ = false;
+    std::atomic<bool> running_{false};
+    bool uses_cached_model_ = false;
 };
 
 #endif

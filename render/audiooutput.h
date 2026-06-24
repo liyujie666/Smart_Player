@@ -39,9 +39,9 @@ public:
     void setVolume(int volume); // volume: 0~100
     void setMute(bool mute);
     bool isMute() const;
-    int getVolume() const;
+    int volume() const;
 
-    int64_t getAudioClock() const;
+    int64_t audioClock() const;
     bool isAudioInitialized() const { return is_audio_init_; }
 
 private:

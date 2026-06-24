@@ -6,7 +6,7 @@
 
 Log* Log::m_instance = nullptr;
 
-Log::Log() : m_curLevel(LOG_DEBUG), m_isFileOpen(false) {}
+Log::Log() : m_curLevel(LogLevel::LOG_DEBUG), m_isFileOpen(false) {}
 
 Log::~Log() {
     if (m_file.is_open()) {
@@ -43,10 +43,10 @@ QString Log::getTime() {
 
 QString Log::level2Str(LogLevel level) {
     switch (level) {
-    case LOG_DEBUG: return "DEBUG";
-    case LOG_INFO:  return "INFO";
-    case LOG_WARN:  return "WARN";
-    case LOG_ERROR: return "ERROR";
+    case LogLevel::LOG_DEBUG: return "DEBUG";
+    case LogLevel::LOG_INFO:  return "INFO";
+    case LogLevel::LOG_WARN:  return "WARN";
+    case LogLevel::LOG_ERROR: return "ERROR";
     default: return "UNKNOWN";
     }
 }
@@ -62,7 +62,7 @@ QString Log::getFileName(const char* filePath) {
 }
 
 void Log::print(LogLevel level, const char* file, int line, const char* fmt, ...) {
-    if (level < m_curLevel) {
+    if (static_cast<int>(level) < static_cast<int>(m_curLevel)) {
         return;
     }
 
@@ -82,17 +82,19 @@ void Log::print(LogLevel level, const char* file, int line, const char* fmt, ...
                       .arg(msg);
 
     switch (level) {
-    case LOG_DEBUG:
+    case LogLevel::LOG_DEBUG:
         qDebug() << "\033[37m" << log << "\033[0m";
         break;
-    case LOG_INFO:
+    case LogLevel::LOG_INFO:
         qInfo() << "\033[32m" << log << "\033[0m";
         break;
-    case LOG_WARN:
+    case LogLevel::LOG_WARN:
         qWarning() << "\033[33m" << log << "\033[0m";
         break;
-    case LOG_ERROR:
+    case LogLevel::LOG_ERROR:
         qCritical() << "\033[31m" << log << "\033[0m";
+        break;
+    default:
         break;
     }
 

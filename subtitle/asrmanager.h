@@ -20,8 +20,13 @@ public:
     void sendAudioFrame(AVFrame* frame);
     SubtitleQueue* queue() { return &queue_; }
 
-    void setModelPath(const QString& path) { model_path_ = path; }
+    void setModelPath(const QString& path);
     bool isModelPathEmpty() const { return model_path_.isEmpty(); }
+
+    // 预加载模型：在后台线程加载好模型，不阻塞 UI
+    // 后续播放时 init() 会直接使用已缓存的上下文
+    void warmUp();
+
 private:
     void switchMode(Demuxer::MediaType type);
 

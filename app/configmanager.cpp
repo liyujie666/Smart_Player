@@ -21,6 +21,7 @@ ConfigManager::ConfigManager()
     if (!settings_->contains("brightness")) settings_->setValue("brightness", 0);
     if (!settings_->contains("contrast")) settings_->setValue("contrast", 100);
     if (!settings_->contains("saturation")) settings_->setValue("saturation", 100);
+    if (!settings_->contains("subtitleFontSize")) settings_->setValue("subtitleFontSize", 26);
     if (!settings_->contains("videoSizeMode")) settings_->setValue("videoSizeMode", 0);
     if (!settings_->contains("screenshotSavePath")) {
         settings_->setValue("screenshotSavePath", QStandardPaths::writableLocation(QStandardPaths::PicturesLocation));
@@ -146,6 +147,16 @@ int ConfigManager::getSaturation() const
 void ConfigManager::setSaturation(int value)
 {
     settings_->setValue("saturation", value);
+}
+
+int ConfigManager::getSubtitleFontSize() const
+{
+    return settings_->value("subtitleFontSize", 26).toInt();
+}
+
+void ConfigManager::setSubtitleFontSize(int size)
+{
+    settings_->setValue("subtitleFontSize", size);
 }
 
 int ConfigManager::getVideoSizeMode() const

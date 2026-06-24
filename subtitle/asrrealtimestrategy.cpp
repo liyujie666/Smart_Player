@@ -1,5 +1,6 @@
 #include "asrrealtimestrategy.h"
 #include "asrworker.h"
+#include "asrmodelcache.h"
 #include "utils/asrutils.h"
 #include <QDebug>
 #include <chrono>
@@ -32,14 +33,25 @@ bool AsrRealtimeStrategy::init(const QString&, AVStream* audio, SubtitleQueue* q
 
     AsrConfig cfg;
     cfg.model_path = model_path_.toStdString();
-    // cfg.language = "zh";
-    // cfg.translate = true;
-    return worker_->init(cfg);
+
+    // 优先从模型缓存获取已加载的上下文
+    whisper_context* cached_ctx = nullptr;
+    if (AsrModelCache::instance().tryAcquire(cached_ctx)) {
+        qDebug() << "[AsrRealtimeStrategy] using cached whisper context";
+        if (worker_->initWithContext(cached_ctx, cfg)) {
+            uses_cached_model_ = true;
+            return true;
+        }
+        AsrModelCache::instance().release();
+        qDebug() << "[AsrRealtimeStrategy] failed to init with cached context, loading own";
+    }
+
+    if (!worker_->init(cfg)) return false;
+    return true;
 }
 
 void AsrRealtimeStrategy::start() {
-    if (running_) return;
-    running_ = true;
+    if (running_.exchange(true)) return;
     thread_ = std::thread(&AsrRealtimeStrategy::run, this);
 }
 
@@ -54,20 +66,25 @@ void AsrRealtimeStrategy::reset() {
     ring_.clear();
     last_text_.clear();
 }
+
 void AsrRealtimeStrategy::release() {
+    if (worker_) worker_->release();
+    if (uses_cached_model_) {
+        AsrModelCache::instance().release();
+        uses_cached_model_ = false;
+    }
     resampler_.reset();
-    worker_->release();
 }
 
 void AsrRealtimeStrategy::sendAudio(AVFrame* frame) {
     if (!resampler_ || !frame) return;
-    uint8_t* buf = (uint8_t*)av_malloc(resampler_->getOutputBufferSize(frame->nb_samples));
+    uint8_t* buf = (uint8_t*)av_malloc(resampler_->outputBufferSize(frame->nb_samples));
     int samples = 0;
     if (resampler_->resample(frame, &buf, &samples) >= 0 && samples > 0) {
         double pts = frame->pts * av_q2d(tb_);
         ring_.push((float*)buf, samples, pts);
     }
-    av_free(buf);
+    av_freep(&buf);
 }
 
 void AsrRealtimeStrategy::run() {

@@ -4,7 +4,7 @@
 
 AudioFilter::AudioFilter(QObject *parent)
     : QObject(parent),
-    currentSpeedIndex_(Speed_1_0)
+    currentSpeedIndex_(static_cast<int>(SpeedIndex::Speed_1_0))
 {
     av_channel_layout_uninit(&chLayout_);
 }
@@ -46,19 +46,19 @@ int AudioFilter::init(int sampleRate, AVSampleFormat sampleFmt, int chs) {
     chLayoutStr_ = buf;
 
     // 创建所有倍速滤镜
-    if (createSingleFilter(Speed_0_5, 0.5) < 0) {
+    if (createSingleFilter(static_cast<int>(SpeedIndex::Speed_0_5), 0.5) < 0) {
         closeInternal();
         return -1;
     }
-    if (createSingleFilter(Speed_1_0, 1.0) < 0) {
+    if (createSingleFilter(static_cast<int>(SpeedIndex::Speed_1_0), 1.0) < 0) {
         closeInternal();
         return -1;
     }
-    if (createSingleFilter(Speed_1_5, 1.5) < 0) {
+    if (createSingleFilter(static_cast<int>(SpeedIndex::Speed_1_5), 1.5) < 0) {
         closeInternal();
         return -1;
     }
-    if (createSingleFilter(Speed_2_0, 2.0) < 0) {
+    if (createSingleFilter(static_cast<int>(SpeedIndex::Speed_2_0), 2.0) < 0) {
         closeInternal();
         return -1;
     }
@@ -180,10 +180,7 @@ int AudioFilter::process(AVFrame *inFrame, AVFrame *outFrame) {
 }
 
 void AudioFilter::setSpeedIndex(SpeedIndex index) {
-
-    if (index >= Speed_0_5 && index <= Speed_2_0) {
-        currentSpeedIndex_ = index;
-    }
+    currentSpeedIndex_ = static_cast<int>(index);
 }
 
 void AudioFilter::closeInternal() {
@@ -225,17 +222,17 @@ void AudioFilter::flush() {
     }
 }
 
-double AudioFilter::getSpeedValue() const {
+double AudioFilter::speedValue() const {
     switch (currentSpeedIndex_.load()) {
-    case Speed_0_5:    return 0.5;
-    case Speed_1_0:    return 1.0;
-    case Speed_1_5:    return 1.5;
-    case Speed_2_0:    return 2.0;
+    case static_cast<int>(SpeedIndex::Speed_0_5):    return 0.5;
+    case static_cast<int>(SpeedIndex::Speed_1_0):    return 1.0;
+    case static_cast<int>(SpeedIndex::Speed_1_5):    return 1.5;
+    case static_cast<int>(SpeedIndex::Speed_2_0):    return 2.0;
     default:           return 1.0;
     }
 }
 
-AudioFilter::SpeedIndex AudioFilter::getSpeedIndex() const {
+AudioFilter::SpeedIndex AudioFilter::speedIndex() const {
     return static_cast<SpeedIndex>(currentSpeedIndex_.load());
 }
 

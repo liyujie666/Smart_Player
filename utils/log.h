@@ -6,7 +6,7 @@
 #include <cstdarg>
 
 // 日志级别枚举
-enum LogLevel {
+enum class LogLevel : int {
     LOG_DEBUG,
     LOG_INFO,
     LOG_WARN,
@@ -42,7 +42,7 @@ public:
 };
 
 // 宏定义（完全兼容原有调用方式）
-#define LOG_DEBUG(fmt, ...)  Log::getInstance()->print(LOG_DEBUG, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...)   Log::getInstance()->print(LOG_INFO, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...)   Log::getInstance()->print(LOG_WARN, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...)  Log::getInstance()->print(LOG_ERROR, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(fmt, ...)  Log::getInstance()->print(LogLevel::LOG_DEBUG, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)   Log::getInstance()->print(LogLevel::LOG_INFO, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)   Log::getInstance()->print(LogLevel::LOG_WARN, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...)  Log::getInstance()->print(LogLevel::LOG_ERROR, __FILE__, __LINE__, fmt, ##__VA_ARGS__)

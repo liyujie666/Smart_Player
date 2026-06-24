@@ -15,6 +15,7 @@ extern "C" {
 class PreviewPlayer : public QObject
 {
     Q_OBJECT
+    Q_DISABLE_COPY_MOVE(PreviewPlayer)
 public:
     explicit PreviewPlayer(QObject *parent = nullptr);
     ~PreviewPlayer();

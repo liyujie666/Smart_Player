@@ -1,9 +1,8 @@
 #ifndef PACKETPOOL_H
 #define PACKETPOOL_H
 
-#include <queue>
-#include <mutex>
 #include <atomic>
+#include <cstddef>
 extern "C" {
 #include <libavcodec/avcodec.h>
 }
@@ -17,7 +16,7 @@ public:
     void recycle(AVPacket* pkt);
 
     void setMaxSize(size_t newMaxSize);
-    size_t getMaxSize();
+    size_t maxSize() const;
     void clear();
     int getCreateCount() const { return createCount_; }
     int getRecycleCount() const { return recycleCount_; }
@@ -25,8 +24,11 @@ public:
 
     void printStats();
 private:
-    std::queue<AVPacket*> pool_;
-    std::mutex mutex_;
+    static constexpr size_t kRingCapacity = 256;
+
+    AVPacket* ring_[kRingCapacity];
+    std::atomic<size_t> ringWrite_{0};
+    std::atomic<size_t> ringRead_{0};
     size_t maxSize_;
 
     std::atomic<int> createCount_{0};

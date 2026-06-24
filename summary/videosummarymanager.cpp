@@ -600,6 +600,7 @@ void VideoSummaryManager::runWhisperASR(const QString& audioPath) {
     const int SEG = 30;
     const int SR = 16000;
     std::vector<float> pcm;
+    pcm.reserve(SEG * SR);
     double startSec = 0;
 
     demux->seek(0);
@@ -621,7 +622,7 @@ void VideoSummaryManager::runWhisperASR(const QString& audioPath) {
             continue;
         }
 
-        uint8_t* buf = (uint8_t*)av_malloc(res->getOutputBufferSize(frame->nb_samples));
+        uint8_t* buf = (uint8_t*)av_malloc(res->outputBufferSize(frame->nb_samples));
         int samples = 0;
         if (res->resample(frame, &buf, &samples) >= 0 && samples > 0) {
             pcm.insert(pcm.end(), (float*)buf, (float*)buf + samples);

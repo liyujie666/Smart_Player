@@ -81,7 +81,7 @@ void TranscriptItemDelegate::paint(QPainter* p, const QStyleOptionViewItem& o, c
     if (idx.row() < 0 || idx.row() >= rows.size()) return;
     const RowItem& row = rows[idx.row()];
 
-    if (row.type == Row_ChapterHeader) {
+    if (row.type == RowType::ChapterHeader) {
         paintChapterHeader(p, o, row);
     } else {
         paintParagraph(p, o, row, idx.row());
@@ -97,7 +97,7 @@ QSize TranscriptItemDelegate::sizeHint(const QStyleOptionViewItem& o, const QMod
     int w = o.rect.width();
     if (w <= 0 && m_panel) w = m_panel->listWidth();
 
-    if (row.type == Row_ChapterHeader) {
+    if (row.type == RowType::ChapterHeader) {
         return QSize(w, 26);
     }
     // Paragraph：用 QTextLayout 预计算高度
@@ -152,7 +152,7 @@ bool TranscriptItemDelegate::editorEvent(QEvent* event, QAbstractItemModel* mode
         // 章节头：双击 seek 到章节开始（QListWidget 也会发 itemDoubleClicked，
         // 但我们这里通过 editorEvent 提前拦截，确保语义统一）
         const QList<RowItem>& rows = m_panel->rows();
-        if (index.row() < rows.size() && rows[index.row()].type == Row_ChapterHeader) {
+        if (index.row() < rows.size() && rows[index.row()].type == RowType::ChapterHeader) {
             QPoint vp = static_cast<QMouseEvent*>(event)->pos();
             m_panel->seekFromRowAt(index.row(), vp);
             return true;
@@ -819,7 +819,7 @@ void TranscriptPanel::rebuildRows() {
 
         // 章节头
         RowItem header;
-        header.type = Row_ChapterHeader;
+        header.type = RowType::ChapterHeader;
         header.chapterIndex = bi;
         header.subtitleIndex = -1;
         header.firstSubtitleIndex = subIndices.first();
@@ -834,7 +834,7 @@ void TranscriptPanel::rebuildRows() {
 
         // 段落
         RowItem para;
-        para.type = Row_Paragraph;
+        para.type = RowType::Paragraph;
         para.chapterIndex = bi;
         para.firstSubtitleIndex = subIndices.first();
         para.subtitleIndex = subIndices.first();
@@ -870,10 +870,10 @@ void TranscriptPanel::applyCollapseToList() {
         const RowItem& r = m_rows[i];
         QListWidgetItem* it = m_list->item(i);
         if (!it) continue;
-        if (r.type == Row_Paragraph) {
+        if (r.type == RowType::Paragraph) {
             bool visible = true;
             for (const RowItem& h : m_rows) {
-                if (h.type == Row_ChapterHeader && h.chapterIndex == r.chapterIndex) {
+                if (h.type == RowType::ChapterHeader && h.chapterIndex == r.chapterIndex) {
                     visible = !h.collapsed;
                     break;
                 }
@@ -1028,8 +1028,8 @@ int TranscriptPanel::findRowIndexBySubtitle(int subtitleIndex) const {
     for (int i = 0; i < m_rows.size(); ++i) {
         const RowItem& r = m_rows[i];
         // 段落：subtitleIndex 落入任一子句索引
-        if (r.type == Row_Paragraph && r.subtitleIndices.contains(subtitleIndex)) return i;
-        if (r.type == Row_ChapterHeader && r.subtitleIndex == subtitleIndex) return i;
+        if (r.type == RowType::Paragraph && r.subtitleIndices.contains(subtitleIndex)) return i;
+        if (r.type == RowType::ChapterHeader && r.subtitleIndex == subtitleIndex) return i;
     }
     return -1;
 }
@@ -1037,7 +1037,7 @@ int TranscriptPanel::findRowIndexBySubtitle(int subtitleIndex) const {
 int TranscriptPanel::findRowIndexByChapter(int chapterIndex) const {
     if (chapterIndex < 0) return -1;
     for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type == Row_ChapterHeader && m_rows[i].chapterIndex == chapterIndex) {
+        if (m_rows[i].type == RowType::ChapterHeader && m_rows[i].chapterIndex == chapterIndex) {
             return i;
         }
     }
@@ -1049,7 +1049,7 @@ int TranscriptPanel::getBlockState(int chapterIndex) const {
     qint64 s = 0, e = 0;
     bool found = false;
     for (const RowItem& r : m_rows) {
-        if (r.type == Row_ChapterHeader && r.chapterIndex == chapterIndex) {
+        if (r.type == RowType::ChapterHeader && r.chapterIndex == chapterIndex) {
             s = r.startMs; e = r.endMs; found = true; break;
         }
     }
@@ -1077,7 +1077,7 @@ int TranscriptPanel::getBlockState(int chapterIndex) const {
 void TranscriptPanel::seekFromRow(int row, const QPoint& viewportPos) {
     if (row < 0 || row >= m_rows.size()) return;
     const RowItem& r = m_rows[row];
-    if (r.type == Row_ChapterHeader) {
+    if (r.type == RowType::ChapterHeader) {
         qint64 target = r.startMs;
         if (target < 0) target = 0;
         emit seekTo(target);
@@ -1113,7 +1113,7 @@ void TranscriptPanel::onItemDoubleClicked(QListWidgetItem* item) {
 bool TranscriptPanel::handleHeaderClick(int rowInList, const QPoint& localPos, const QRect& itemRect) {
     if (rowInList < 0 || rowInList >= m_rows.size()) return false;
     const RowItem& r = m_rows[rowInList];
-    if (r.type != Row_ChapterHeader) {
+    if (r.type != RowType::ChapterHeader) {
         return false;
     }
     Q_UNUSED(localPos);
@@ -1127,7 +1127,7 @@ bool TranscriptPanel::handleHeaderClick(int rowInList, const QPoint& localPos, c
 void TranscriptPanel::onCollapseFinishedClicked() {
     bool any = false;
     for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type != Row_ChapterHeader) continue;
+        if (m_rows[i].type != RowType::ChapterHeader) continue;
         if (getBlockState(m_rows[i].chapterIndex) == 2) {
             m_rows[i].collapsed = true;
             any = true;
@@ -1139,7 +1139,7 @@ void TranscriptPanel::onCollapseFinishedClicked() {
 void TranscriptPanel::onExpandAllClicked() {
     bool any = false;
     for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type == Row_ChapterHeader && m_rows[i].collapsed) {
+        if (m_rows[i].type == RowType::ChapterHeader && m_rows[i].collapsed) {
             m_rows[i].collapsed = false;
             any = true;
         }
@@ -1150,7 +1150,7 @@ void TranscriptPanel::onExpandAllClicked() {
 void TranscriptPanel::onCollapseAllClicked() {
     bool any = false;
     for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type == Row_ChapterHeader && !m_rows[i].collapsed) {
+        if (m_rows[i].type == RowType::ChapterHeader && !m_rows[i].collapsed) {
             m_rows[i].collapsed = true;
             any = true;
         }
@@ -1176,7 +1176,7 @@ void TranscriptPanel::onSearchTextChanged(const QString& kw) {
     int firstRow = -1;
     for (int i = 0; i < m_rows.size(); ++i) {
         const RowItem& r = m_rows[i];
-        if (r.type != Row_Paragraph) continue;
+        if (r.type != RowType::Paragraph) continue;
         bool hit = false;
         for (int si : r.subtitleIndices) if (hitSubIdxs.contains(si)) { hit = true; break; }
         if (hit) {
