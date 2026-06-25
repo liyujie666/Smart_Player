@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
-#include "playercore.h"
+#include "viewmodel/playerviewmodel.h"
+#include "viewmodel/playlistviewmodel.h"
 #include "previewplayer.h"
 #include "render/openglrenderer.h"
 #include "videoslider.h"
@@ -148,7 +149,7 @@ private:
 private:
     Ui::MainWindow *ui;
     settingDialog *settingdialog;
-    PlayerCore *player_;
+    PlayerViewModel *player_;   // MVVM 阶段 1：原 PlayerCore* 升级为 PlayerViewModel*
     PreviewPlayer* preview_player_;
     OpenGLRenderer *preview_;
     QWidget *previewContainer_ = nullptr;
@@ -158,10 +159,9 @@ private:
     SubtitlePopup *subtitlePopup_ = nullptr;
 
 
-    QVector<QString> fileList;//文件列表
-    QVector<int> fileDurationList; // parallel to fileList, seconds
-    int listIndex;//当前播放文件在播放列表中位置
-    QVector<QString> shuffledList_;
+    // 播放列表迁移到 PlaylistViewModel；fileList/fileDurationList/listIndex/shuffledList_/playMode_
+    // 等字段已被废弃。新代码请通过 playlist_->xxx() 访问。
+    PlaylistViewModel* playlist_ = nullptr;
     std::atomic<bool> playFinished_busy_{false};
     QTimer timer; // 定时器
     bool isLongPress = false; // 是否长按
@@ -179,7 +179,6 @@ private:
 
     // 加载动画
     QLabel* loadingLabel_ = nullptr;
-    PlayMode playMode_ = PlayMode::ListLoop;
 
     VideoSummaryManager* m_summaryManager = nullptr;
     SummaryPanel*        m_summaryPanel    = nullptr;

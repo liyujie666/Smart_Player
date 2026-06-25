@@ -13,6 +13,7 @@ CONFIG += c++17
 # ===== 模块清单 =====
 #   app/         主窗口、UI 控件、弹窗、配置
 #   core/        播放核心 (playercore + syncclock)
+#   viewmodel/   MVVM 中的 ViewModel 层（连接 View 与 core/summary 等 Model）
 #   summary/     AI 总结 / 分段 / 网络 / 面板 / 文稿
 #   subtitle/    ASR 字幕生成
 #   translator/  翻译（当前禁用编译，依赖未配置）
@@ -32,6 +33,7 @@ CONFIG += c++17
 SRC_DIRS = $$PWD \
            $$PWD/app \
            $$PWD/core \
+           $$PWD/viewmodel \
            $$PWD/summary \
            $$PWD/subtitle \
            $$PWD/queue \
