@@ -13,7 +13,8 @@
 #include "videoitemwidget.h"
 #include "subtitlepopup.h"
 #include "configmanager.h"
-#include "videosummarymanager.h"
+#include "viewmodel/summaryviewmodel.h"
+#include "viewmodel/transcriptviewmodel.h"
 #include "summarypanel.h"
 #include "transcriptpanel.h"
 #include <QMainWindow>
@@ -180,7 +181,8 @@ private:
     // 加载动画
     QLabel* loadingLabel_ = nullptr;
 
-    VideoSummaryManager* m_summaryManager = nullptr;
+    SummaryViewModel*    m_summaryVm       = nullptr;   // MVVM 阶段 3a：替换原 m_summaryManager
+    TranscriptViewModel* m_transcriptVm    = nullptr;   // MVVM 阶段 3b：拆解 TranscriptPanel
     SummaryPanel*        m_summaryPanel    = nullptr;
     TranscriptPanel*     m_transcriptPanel = nullptr;
     QDockWidget*         m_rightDock       = nullptr;   // 合并后的右侧 dock（内含 tab）

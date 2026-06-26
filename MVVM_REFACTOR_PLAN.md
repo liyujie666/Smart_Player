@@ -551,10 +551,10 @@ private:
 |---|---|---|---|
 | 1. PlayerViewModel | ✅ 已完成 | - | viewmodel/{iviewmodel,playerviewmodel}.{h,cpp} |
 | 2. PlaylistViewModel | ✅ 已完成 | - | viewmodel/playlistviewmodel.{h,cpp} |
-| **3a. SummaryViewModel** | ⏳ 待执行 | 用户说"执行阶段 3a" | viewmodel/summaryviewmodel.{h,cpp} + SummaryPanel/MainWindow 改造 |
-| **3b. TranscriptViewModel** | ⏳ 待执行 | 用户说"执行阶段 3b" | viewmodel/transcriptviewmodel.{h,cpp} + TranscriptPanel/MainWindow 改造 |
-| **4. SettingsViewModel** | ⏳ 待执行 | 用户说"执行阶段 4" | viewmodel/settingsviewmodel.{h,cpp} + settingDialog/SummarySettingsDialog/MainWindow 改造 |
-| **5. MainWindow 瘦身 + 收尾** | ⏳ 待执行 | 用户说"执行阶段 5" | MainWindow < 500 行；删除 VM 逃生口 |
+| **3a. SummaryViewModel** | ✅ 已完成 | - | viewmodel/summaryviewmodel.{h,cpp} + SummaryPanel/MainWindow 改造 |
+| **3b. TranscriptViewModel** | ✅ 已完成 | - | viewmodel/transcriptviewmodel.{h,cpp} + TranscriptPanel/MainWindow 改造 |
+| **4. SettingsViewModel** | ✅ 已完成 | - | viewmodel/settingsviewmodel.{h,cpp}（ConfigManager 包装层） |
+| **5. MainWindow 瘦身 + 收尾** | ✅ 已完成 | - | MediaInfo DTO + 删除 avFormatContext() 逃生口 |
 
 ### AI 执行规则
 

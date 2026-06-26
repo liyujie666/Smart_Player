@@ -1,5 +1,4 @@
 #include "summarypanel.h"
-#include "transcriptpanel.h"
 #include "summarysettingsdialog.h"
 #include "configmanager.h"
 #include <QListWidgetItem>
@@ -371,24 +370,35 @@ void SummaryPanel::buildUI() {
     )"));
 }
 
-void SummaryPanel::bindManager(VideoSummaryManager* mgr) {
-    m_manager = mgr;
-    if (!m_manager) return;
+void SummaryPanel::bindViewModel(SummaryViewModel* vm) {
+    m_vm = vm;
+    if (!m_vm) return;
 
-    connect(m_manager, &VideoSummaryManager::stateChanged,
-            this, &SummaryPanel::onStateChanged);
-    connect(m_manager, &VideoSummaryManager::segmentAnalyzed,
-            this, &SummaryPanel::onSegmentAnalyzed);
-    connect(m_manager, &VideoSummaryManager::progressUpdated,
-            this, &SummaryPanel::onProgressUpdated);
-    connect(m_manager, &VideoSummaryManager::progressDetailChanged,
-            this, &SummaryPanel::onProgressDetailChanged);
-    connect(m_manager, &VideoSummaryManager::fullReportReady,
-            this, &SummaryPanel::onFullReportReady);
-    connect(m_manager, &VideoSummaryManager::structuredReportReady,
-            this, &SummaryPanel::onStructuredReportReady);
-    connect(m_manager, &VideoSummaryManager::errorOccurred,
-            this, &SummaryPanel::onErrorOccurred);
+    connect(m_vm, &SummaryViewModel::stateChanged,
+            this, &SummaryPanel::onVmStateChanged);
+    connect(m_vm, &SummaryViewModel::segmentAnalyzed,
+            this, &SummaryPanel::onVmSegmentAnalyzed);
+    connect(m_vm, &SummaryViewModel::progressChanged,
+            this, &SummaryPanel::onVmProgressChanged);
+    connect(m_vm, &SummaryViewModel::reportChanged,
+            this, &SummaryPanel::onVmReportChanged);
+    connect(m_vm, &SummaryViewModel::errorOccurred,
+            this, &SummaryPanel::onVmErrorOccurred);
+
+    // 初始同步：如果 VM 内已有 report（比如先前已加载），立即填充一次面板
+    if (m_vm->hasReport()) {
+        populateFromReport(m_vm->report());
+    }
+    // 初始同步 model combobox 到 VM 当前 model
+    const QString curModel = m_vm->model();
+    if (!curModel.isEmpty() && m_cmbModel) {
+        for (int i = 0; i < m_cmbModel->count(); ++i) {
+            if (m_cmbModel->itemData(i).toString() == curModel) {
+                m_cmbModel->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
 }
 
 void SummaryPanel::setVideoPath(const QString& path) {
@@ -450,70 +460,62 @@ void SummaryPanel::resetPanelForNewVideo() {
 }
 
 void SummaryPanel::onStartClicked() {
-    if (!m_manager) return;
+    if (!m_vm) return;
     if (m_currentVideoPath.isEmpty()) {
         m_lblStatus->setText(QStringLiteral(u"\u9519\u8bef: \u8bf7\u5148\u6253\u5f00\u8981\u5206\u6790\u7684\u89c6\u9891"));
         return;
     }
-
-    // 先查缓存:命中则直接显示结果,不重跑 LLM/VLM
-    if (m_manager->tryLoadFromCache(m_currentVideoPath)) {
-        populateFromReport(m_manager->report());
-        const SummaryReport& r = m_manager->report();
-        QString when = r.generatedAt.isValid()
-            ? r.generatedAt.toString(QStringLiteral(u"yyyy-MM-dd HH:mm"))
-            : QStringLiteral(u"\u672a\u77e5\u65f6\u95f4");
-        m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u5df2\u4ece\u7f13\u5b58\u52a0\u8f7d (\u5206\u6790\u4e8e %1)").arg(when));
-        if (m_lblMeta) {
-            m_lblMeta->setText(QStringLiteral(u"\u4ece\u7f13\u5b58\u6062\u590d \u00b7 \u5206\u6790\u4e8e %1").arg(when));
-        }
-        m_btnStart->setEnabled(false);
-        m_btnStop->setEnabled(false);
-        m_btnRerun->setEnabled(true);
-        m_btnExport->setEnabled(true);
-        m_cmbModel->setEnabled(false);
-        m_progressBar->setValue(100);
-        m_analysisInProgress = false;
-        return;
-    }
-
     if (m_cmbModel->currentIndex() >= 0) {
-        m_manager->setModel(m_cmbModel->currentData().toString());
+        m_vm->setModel(m_cmbModel->currentData().toString());
     }
-    m_manager->startSummary(m_currentVideoPath);
+    // VM 内部会先尝试缓存，命中则直接 emit reportChanged + stateChanged(Finished)
+    m_vm->setVideoPath(m_currentVideoPath);
+    m_vm->start();
 }
 
 void SummaryPanel::onStopClicked() {
-    if (!m_manager) return;
-    m_manager->stopSummary();
+    if (!m_vm) return;
+    m_vm->stop();
 }
 
 void SummaryPanel::onRerunClicked() {
-    onStartClicked();
+    if (!m_vm) return;
+    if (m_cmbModel->currentIndex() >= 0) {
+        m_vm->setModel(m_cmbModel->currentData().toString());
+    }
+    m_vm->setVideoPath(m_currentVideoPath);
+    m_vm->rerun();
 }
 
 void SummaryPanel::onExportClicked() {
-    if (!m_manager) return;
-    const SummaryReport& r = m_manager->report();
-    if (!r.isValid) {
-        QMessageBox::information(this, QStringLiteral(u"\u5bfc\u51fa"), QStringLiteral(u"\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u5206\u6790\u7ed3\u679c"));
+    if (!m_vm) return;
+    if (!m_vm->hasReport()) {
+        QMessageBox::information(this, QStringLiteral(u"\u5bfc\u51fa"),
+            QStringLiteral(u"\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u5206\u6790\u7ed3\u679c"));
         return;
     }
-    exportMarkdown(r);
+    QString fileName = QFileDialog::getSaveFileName(this,
+        QStringLiteral(u"\u5bfc\u51fa\u4e3a Markdown"),
+        QDir::homePath() + "/video_summary.md",
+        QStringLiteral(u"Markdown (*.md)"));
+    if (fileName.isEmpty()) return;
+    m_vm->exportMarkdownTo(fileName);
+    QMessageBox::information(this, QStringLiteral(u"\u5bfc\u51fa\u6210\u529f"),
+        QStringLiteral(u"\u5df2\u5b58\u5230: %1").arg(fileName));
 }
 
 void SummaryPanel::onSettingsClicked() {
     SummarySettingsDialog dlg(this);
     dlg.exec();
     // 配置改动不打断正在运行的分析,只在下次 startSummary 生效
-    // 如果用户改的是 model,这里刷新一下 combobox
-    if (m_manager) {
+    // 如果用户改的是 model,这里通过 VM 同步刷新
+    if (m_vm) {
         QString model = ConfigManager::instance().getSummaryModel();
-        m_manager->setModel(model);
+        m_vm->setModel(model);
     }
 }
 
-void SummaryPanel::onStateChanged(SummaryState state) {
+void SummaryPanel::onVmStateChanged(SummaryState state) {
     switch (state) {
         case SummaryState::Idle:
             m_btnStart->setEnabled(true);
@@ -561,55 +563,69 @@ void SummaryPanel::onStateChanged(SummaryState state) {
     }
 }
 
-void SummaryPanel::onSegmentAnalyzed(int index, const QString& desc) {
+void SummaryPanel::onVmSegmentAnalyzed(int index, const QString& desc) {
     if (m_analysisInProgress) return;
     updateSegmentItem(index, desc, true);
 }
 
-void SummaryPanel::onProgressUpdated(double progress) {
-    m_progressBar->setValue(qRound(progress * 100));
-}
+void SummaryPanel::onVmProgressChanged() {
+    if (!m_vm) return;
+    m_progressBar->setValue(qRound(m_vm->overallProgress() * 100));
 
-void SummaryPanel::onProgressDetailChanged(const VideoSummaryManager::Progress& progress) {
-    updateStatusLabel(progress);
-    if (progress.totalSegments > 0 && progress.stage == SummaryState::AnalyzingSegments) {
+    int totalSegments = m_vm->totalSegments();
+    int curSegment    = m_vm->currentSegment();
+    SummaryState stage = m_vm->state();
+
+    if (totalSegments > 0 && stage == SummaryState::AnalyzingSegments) {
         m_lblStatus->setText(QStringLiteral(u"\u5206\u6790\u4e2d %1/%2 \u6bb5")
-            .arg(progress.currentSegment + 1)
-            .arg(progress.totalSegments));
+            .arg(curSegment + 1)
+            .arg(totalSegments));
     }
 
     // 构建初始 segment 列表骨架（时间范围占位，无描述）
-    // 列表在分析过程中保持空白/骨架态，直到 structuredReportReady 才填入章节标题
-    if (m_segmentList->count() == 0 && progress.totalSegments > 0) {
+    // 列表在分析过程中保持空白/骨架态，直到 reportChanged 才填入章节标题
+    if (m_segmentList->count() == 0 && totalSegments > 0) {
         rebuildSegmentList();
     }
 
-    if (progress.stage == SummaryState::Finished) {
+    if (stage == SummaryState::Finished) {
         QString model = m_cmbModel->currentText();
-        m_lblMeta->setText(QStringLiteral(u"%1 \u00b7 %2 \u6bb5 \u00b7 %3 \u00b7 \u5206\u6790\u5b8c\u6210")
-            .arg(formatMetaTime(m_manager ? m_manager->progress().stageProgress * 0 : 0))
-            .arg(progress.totalSegments)
+        m_lblMeta->setText(QStringLiteral(u"%1 \u6bb5 \u00b7 %2 \u00b7 \u5206\u6790\u5b8c\u6210")
+            .arg(totalSegments)
             .arg(model));
     }
 }
 
-void SummaryPanel::onFullReportReady(const QString& reportJson) {
-    Q_UNUSED(reportJson);
+void SummaryPanel::onVmReportChanged() {
+    if (!m_vm) return;
+    if (!m_vm->hasReport()) return;
+    const SummaryReport& r = m_vm->report();
+    populateFromReport(r);
+
+    // 缓存命中时通过 VM 也会触发 reportChanged，这里同步更新元信息行
+    if (r.generatedAt.isValid()) {
+        QString when = r.generatedAt.toString(QStringLiteral(u"yyyy-MM-dd HH:mm"));
+        // 当处于 Finished 时显示"从缓存恢复 · 分析于 X"
+        if (m_vm->state() == SummaryState::Finished) {
+            if (m_lblMeta && m_lblMeta->text().isEmpty()) {
+                m_lblMeta->setText(QStringLiteral(u"\u4ece\u7f13\u5b58\u6062\u590d \u00b7 \u5206\u6790\u4e8e %1").arg(when));
+            }
+            if (m_lblStatus) {
+                m_lblStatus->setText(QStringLiteral(u"\u72b6\u6001: \u5206\u6790\u5b8c\u6210"));
+            }
+        }
+    }
 }
 
-void SummaryPanel::onStructuredReportReady(const SummaryReport& report) {
-    populateFromReport(report);
-}
-
-void SummaryPanel::onErrorOccurred(const QString& message) {
+void SummaryPanel::onVmErrorOccurred(const QString& message) {
     m_lblStatus->setText(QStringLiteral(u"\u9519\u8bef: %1").arg(message));
 }
 
 int SummaryPanel::findSegmentAtMs(qint64 ms) const {
-    if (!m_manager) return -1;
-    int count = m_manager->segmentCount();
+    if (!m_vm) return -1;
+    int count = m_vm->segmentCount();
     for (int i = 0; i < count; ++i) {
-        const SummarySegment* seg = m_manager->segmentAt(i);
+        const SummarySegment* seg = m_vm->segmentAt(i);
         if (seg && ms >= seg->startMs && ms < seg->endMs) {
             return i;
         }
@@ -619,8 +635,8 @@ int SummaryPanel::findSegmentAtMs(qint64 ms) const {
 
 void SummaryPanel::onSegmentClicked(QListWidgetItem* item) {
     int row = m_segmentList->row(item);
-    if (m_manager) {
-        const SummarySegment* seg = m_manager->segmentAt(row);
+    if (m_vm) {
+        const SummarySegment* seg = m_vm->segmentAt(row);
         if (seg) {
             emit seekTo(seg->startMs * 1000);
         }
@@ -673,12 +689,13 @@ bool SummaryPanel::eventFilter(QObject* watched, QEvent* event) {
 }
 
 void SummaryPanel::updateSegmentItem(int index, const QString& desc, bool isAnalyzed) {
+    Q_UNUSED(isAnalyzed);
     if (index < 0 || index >= m_segmentList->count()) return;
     QListWidgetItem* item = m_segmentList->item(index);
     if (!item) return;
 
-    if (m_manager) {
-        const SummarySegment* seg = m_manager->segmentAt(index);
+    if (m_vm) {
+        const SummarySegment* seg = m_vm->segmentAt(index);
         if (seg) {
             QString timeRange = QStringLiteral(u"%1 - %2")
                 .arg(formatDuration(seg->startMs))
@@ -689,21 +706,17 @@ void SummaryPanel::updateSegmentItem(int index, const QString& desc, bool isAnal
     }
 }
 
-void SummaryPanel::updateStatusLabel(const VideoSummaryManager::Progress& progress) {
-    Q_UNUSED(progress);
-}
-
 void SummaryPanel::rebuildSegmentList() {
     rebuildSegmentList({});
 }
 
 void SummaryPanel::rebuildSegmentList(const QList<SummaryChapter>& chapters) {
-    if (!m_manager) return;
+    if (!m_vm) return;
 
     m_segmentList->clear();
-    int count = m_manager->segmentCount();
+    int count = m_vm->segmentCount();
     for (int i = 0; i < count; ++i) {
-        const SummarySegment* seg = m_manager->segmentAt(i);
+        const SummarySegment* seg = m_vm->segmentAt(i);
         if (!seg) continue;
 
         QString timeRange = QStringLiteral(u"%1 - %2")
@@ -801,79 +814,11 @@ void SummaryPanel::populateFromReport(const SummaryReport& report) {
     m_analysisInProgress = false;
     rebuildSegmentList(report.chapters);
 
-    // 一次性把三份数据都喂给 TranscriptPanel
-    if (m_transcriptPanel) {
-        m_transcriptPanel->setChapters(report.chapters);
-        m_transcriptPanel->setSegments(report.segments);
-        m_transcriptPanel->setSubtitleItems(report.asrResults);
-    }
+    // 文稿面板的数据喂养已由 MainWindow 通过监听 SummaryViewModel::reportChanged 协调，
+    // 这里 SummaryPanel 不再直接持有 TranscriptPanel。
 
     // Enable export
     m_btnExport->setEnabled(true);
 }
 
-void SummaryPanel::exportMarkdown(const SummaryReport& report) {
-    QString fileName = QFileDialog::getSaveFileName(this,
-        QStringLiteral(u"\u5bfc\u51fa\u4e3a Markdown"),
-        QDir::homePath() + "/video_summary.md",
-        QStringLiteral(u"Markdown (*.md)"));
-
-    if (fileName.isEmpty()) return;
-
-    QString md;
-    md += "# \u89c6\u9891 AI \u5206\u6790\u62a5\u544a\n\n";
-
-    if (!report.tldr.isEmpty()) {
-        md += "## TL;DR\n\n" + report.tldr + "\n\n";
-    }
-    if (!report.keyTakeaways.isEmpty()) {
-        md += "## \u5173\u952e\u8981\u70b9\n\n";
-        for (const QString& pt : report.keyTakeaways) {
-            md += "- " + pt + "\n";
-        }
-        md += "\n";
-    }
-    if (!report.chapters.isEmpty()) {
-        md += "## \u7ae0\u8282\u65f6\u95f4\u8f74\n\n";
-        for (const SummaryChapter& ch : report.chapters) {
-            md += QStringLiteral(u"- [%1 - %2] %3\n")
-                .arg(formatDuration(ch.startMs))
-                .arg(formatDuration(ch.endMs))
-                .arg(ch.title);
-        }
-        md += "\n";
-    }
-    if (!report.entities.isEmpty()) {
-        md += "## \u5173\u952e\u5b57\u8bcd\n\n";
-        for (const SummaryEntity& e : report.entities) {
-            md += QStringLiteral(u"- **%1** (%2) \u2014 \u9996\u6b21\u51fa\u73b0: %3\n")
-                .arg(e.name)
-                .arg(e.type)
-                .arg(formatDuration(e.firstMentionMs));
-        }
-        md += "\n";
-    }
-    if (!report.fullMarkdown.isEmpty()) {
-        QString cleanMd = report.fullMarkdown;
-        QRegularExpression chapterListRe(
-            QStringLiteral(u"##\\s*章节列表[\\s\\S]*?(?=\\n##\\s|\\Z)"));
-        cleanMd.remove(chapterListRe);
-        cleanMd = cleanMd.trimmed();
-        if (!cleanMd.isEmpty()) {
-            md += "## \u8be6\u7ec6\u5185\u5bb9\n\n" + cleanMd + "\n\n";
-        }
-    }
-
-    md += QStringLiteral(u"---\n*\u7531 AI \u81ea\u52a8\u751f\u6210 \u00b7 %1*")
-        .arg(QDateTime::currentDateTime().toString(QStringLiteral(u"yyyy-MM-dd HH:mm")));
-
-    QFile f(fileName);
-    if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        f.write(md.toUtf8());
-        f.close();
-        QMessageBox::information(this, QStringLiteral(u"\u5bfc\u51fa\u6210\u529f"),
-            QStringLiteral(u"\u5df2\u5b58\u5230: %1").arg(fileName));
-    } else {
-        QMessageBox::warning(this, QStringLiteral(u"\u5bfc\u51fa\u5931\u8d25"), f.errorString());
-    }
-}
+// 旧的 exportMarkdown(const SummaryReport&) 已迁移到 SummaryViewModel::exportMarkdownTo

@@ -332,10 +332,9 @@ void MainWindow::onPlayerOpenResult(bool result)
         if (m_transcriptPanel) {
             m_transcriptPanel->setVideoPath(player_->fileUrl());
         }
-        if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
-            && m_summaryManager->state() != SummaryState::Finished
-            && m_summaryManager->state() != SummaryState::Error) {
-            m_summaryManager->stopSummary();
+        if (m_summaryVm) {
+            // VM 内部会判断状态并 stop（如有必要），无需 MainWindow 重复判断
+            m_summaryVm->setVideoPath(player_->fileUrl());
         }
         // mp3渲染专辑封面
         if (!player_->hasVideo()) {
@@ -795,7 +794,7 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *pEvent)
         VideoInfoDialog *videoinfodialog = new VideoInfoDialog(this);
         videoinfodialog->setAttribute(Qt::WA_DeleteOnClose);
         if(player_->state() != PlayerViewModel::Stopped){
-            videoinfodialog->updateinformation(player_->avFormatContext(),player_->fileUrl().toStdString().c_str());
+            videoinfodialog->updateinformation(player_->mediaInfo());
             videoinfodialog->show();
         }else{
             QMessageBox::information(NULL,"暂无播放视频","打开一个视频才有信息哦！",QMessageBox::Yes);
@@ -965,10 +964,8 @@ void MainWindow::play(QString filePath)
     if (m_summaryPanel) {
         m_summaryPanel->setVideoPath(filePath);
     }
-    if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
-        && m_summaryManager->state() != SummaryState::Finished
-        && m_summaryManager->state() != SummaryState::Error) {
-        m_summaryManager->stopSummary();
+    if (m_summaryVm) {
+        m_summaryVm->setVideoPath(filePath);
     }
     player_->open(filePath);
 }
@@ -1476,9 +1473,14 @@ void MainWindow::on_subtitleBtn_clicked()
 }
 
 void MainWindow::setupRightPanel() {
-    m_summaryManager  = new VideoSummaryManager();
+    // MVVM 阶段 3a：用 SummaryViewModel 替换原始的 VideoSummaryManager。
+    // VM 内部拥有 manager，Panel 通过 VM 与之交互，MainWindow 不再持有原始 Model。
+    m_summaryVm       = new SummaryViewModel(this);
+    // MVVM 阶段 3b：TranscriptPanel 业务数据迁移到 TranscriptViewModel
+    m_transcriptVm    = new TranscriptViewModel(this);
     m_summaryPanel    = new SummaryPanel(this);
     m_transcriptPanel = new TranscriptPanel(this);
+    m_transcriptPanel->bindViewModel(m_transcriptVm);
 
     // 用 SlidingTabWidget 把"AI 视频总结"和"视频文稿"装到 mainwindow 右侧边缘，
     // 两个 tab 按钮等宽平分整个面板宽度，切换时有"胶囊背景色块"在按钮之间滑动的动画。
@@ -1501,8 +1503,8 @@ void MainWindow::setupRightPanel() {
     addDockWidget(Qt::RightDockWidgetArea, m_rightDock);
     m_rightDock->hide();
 
-    // SummaryPanel 数据绑定
-    m_summaryPanel->bindManager(m_summaryManager);
+    // SummaryPanel 数据绑定（通过 ViewModel）
+    m_summaryPanel->bindViewModel(m_summaryVm);
     connect(m_summaryPanel, &SummaryPanel::seekTo, this, [this](qint64 ms) {
         player_->seek(ms);
     });
@@ -1522,9 +1524,19 @@ void MainWindow::setupRightPanel() {
     connect(player_, &PlayerViewModel::initFinished, this, [this]() {
         m_transcriptPanel->setDuration(player_->duration());
     });
-    connect(m_summaryManager, &VideoSummaryManager::asrCompleted,
+
+    // MVVM 阶段 3a：SummaryViewModel ↔ TranscriptPanel 的数据流由 MainWindow 协调
+    //   - ASR 完成 → 文稿面板获得字幕（流式）
+    //   - 结构化 Report → 章节 / 段落 / 字幕 一并喂给文稿面板
+    connect(m_summaryVm, &SummaryViewModel::asrCompleted,
             m_transcriptPanel, &TranscriptPanel::setSubtitleItems);
-    m_summaryPanel->setTranscriptPanel(m_transcriptPanel);
+    connect(m_summaryVm, &SummaryViewModel::reportChanged, this, [this]() {
+        if (!m_summaryVm->hasReport() || !m_transcriptPanel) return;
+        const SummaryReport& r = m_summaryVm->report();
+        m_transcriptPanel->setChapters(r.chapters);
+        m_transcriptPanel->setSegments(r.segments);
+        m_transcriptPanel->setSubtitleItems(r.asrResults);
+    });
 
     // 不再使用 menubar——面板切换由 tab 直接承担
     if (QMenuBar* mb = menuBar()) {
