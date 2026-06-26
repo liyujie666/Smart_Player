@@ -66,7 +66,8 @@ public:
         return queue_.size();
     }
 
-    bool isEmpty() const {
+    bool isEmpty() {
+        std::lock_guard<std::mutex> lock(mtx_);
         return queue_.empty();
     }
 

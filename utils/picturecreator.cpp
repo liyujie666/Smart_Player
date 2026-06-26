@@ -67,16 +67,19 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         codecCtx = avcodec_alloc_context3(codec);
         if (!codecCtx) {
             avformat_close_input(&fmtCtx);
+            av_frame_free(&frame);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
         if (avcodec_parameters_to_context(codecCtx, codecParams) < 0) {
             avcodec_free_context(&codecCtx);
             avformat_close_input(&fmtCtx);
+            av_frame_free(&frame);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
         if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
             avcodec_free_context(&codecCtx);
             avformat_close_input(&fmtCtx);
+            av_frame_free(&frame);
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
 
@@ -90,6 +93,7 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         // Clean up codec context since we return early from this block
         avcodec_free_context(&codecCtx);
         avformat_close_input(&fmtCtx);
+        av_frame_free(&frame);
         if (previewImage.isNull()) {
             return QImage(":/SmartPlayer-icon/image_audio_2.jpg");
         }
@@ -146,17 +150,20 @@ QImage PictureCreator::getPreViewImage(const QString &videoPath, int maxWidth, i
         }
 
         // 5. 读取并解码第一帧
-        AVPacket packet;
-        while (av_read_frame(fmtCtx, &packet) >= 0) {
-            if (packet.stream_index == videoStreamIdx) {
-                if (avcodec_send_packet(codecCtx, &packet) == 0) {
-                    if (avcodec_receive_frame(codecCtx, frame) == 0) {
-                        previewImage = convertFrameToQImage(frame, maxWidth, maxHeight);
-                        break;
+        {
+            AVPacket packet;
+            while (av_read_frame(fmtCtx, &packet) >= 0) {
+                if (packet.stream_index == videoStreamIdx) {
+                    if (avcodec_send_packet(codecCtx, &packet) == 0) {
+                        if (avcodec_receive_frame(codecCtx, frame) == 0) {
+                            previewImage = convertFrameToQImage(frame, maxWidth, maxHeight);
+                            av_packet_unref(&packet);
+                            break;
+                        }
                     }
                 }
+                av_packet_unref(&packet);
             }
-            av_packet_unref(&packet);
         }
     }else if(type == "RTSP"){
         duration_ = 0;

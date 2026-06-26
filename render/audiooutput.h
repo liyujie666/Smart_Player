@@ -62,7 +62,6 @@ private:
     uint32_t audio_buf_size_ = 0;
     uint32_t audio_buf_index_ = 0;
 
-    FILE* dump_pcm_ = nullptr;
     bool is_audio_init_ = false;
     mutable QMutex mutex_;  // 线程锁
 

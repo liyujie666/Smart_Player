@@ -68,6 +68,7 @@ bool PlayerCore::openInternal(const QString &url)
     if (ret < 0) {
         qDebug() << "解复用器打开失败";
         QString info = url + "打开失败";
+        releaseResources();
         emit playFailed(info);
         return false;
     }
@@ -86,6 +87,7 @@ bool PlayerCore::openInternal(const QString &url)
         ret = video_decoder_->init(vStream->codecpar,AVMEDIA_TYPE_VIDEO,decoder_type_);
         if(ret < 0){
             qDebug() << "视频解码器初始化失败！";
+            releaseResources();
             return false;
         }
 
@@ -101,6 +103,7 @@ bool PlayerCore::openInternal(const QString &url)
         ret = audio_decoder_->init(aStream->codecpar,AVMEDIA_TYPE_AUDIO);
         if(ret < 0){
             qDebug() << "音频解码器初始化失败！";
+            releaseResources();
             return false;
         }
 
@@ -392,13 +395,15 @@ void PlayerCore::seek(int64_t pos_us)
     int ret = demuxer_->seek(pos_us);
     if (ret < 0) qWarning() << "seek failed";
 
-
     sync_clock_->reset();
     sync_clock_->set_audio_clock(pos_us);
 
-    is_seek_ = false;
-    state_ = Running;
-    cond_.wakeAll();
+    {
+        QMutexLocker lock(&mutex_);
+        is_seek_ = false;
+        state_ = Running;
+        cond_.wakeAll();
+    }
     asr_manager_->reset();
 }
 

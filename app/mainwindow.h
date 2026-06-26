@@ -142,6 +142,7 @@ private:
     void enterFullScreenMode();
     void exitFullScreenMode();
     void centerLoadingLabel();
+    void repositionControlBarFullScreen();
 
     void setupRightPanel();
 

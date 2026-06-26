@@ -219,16 +219,13 @@ MainWindow::~MainWindow()
     player_->stop();
     preview_player_->stop();
     //释放资源
-    delete ui;
-    delete player_;
+    // player_ 的 parent 是 this，随 QObject 树自动析构，不需手动 delete
+    // preview_ 的 parent 是 previewContainer_，随 ui 析构自动释放，不需手动 delete
     delete preview_player_;
-    delete picture_;
-    delete preview_;
-
-    player_ = nullptr;
     preview_player_ = nullptr;
-    preview_ = nullptr;
+    delete picture_;
     picture_ = nullptr;
+    delete ui;
 }
 
 void MainWindow::onPlayerStateChanged()
@@ -417,7 +414,7 @@ void MainWindow::on_openFileBtn_clicked()
                                                     "选择多媒体文件",
                                                     "/home",
                                                     "多媒体文件(*.mp4 *.avi *.mkv *.mp3 *.aac *.mov *.ts)");
-    if(filePath == nullptr) return;
+    if(filePath.isEmpty()) return;
     addToFileList(filePath);
     scheduleSave();
     play(filePath);
@@ -577,7 +574,7 @@ void MainWindow::on_addFileBtn_clicked()
                                                     "/home", //初始路径
                                                     "多媒体文件 (*.mp4 *.avi *.mkv *.mp3 *.aac *.mov *.ts)"
                                                     );
-    if(filePath==nullptr) return;//没有成功打开文件
+    if(filePath.isEmpty()) return;//没有成功打开文件
 
     bool wasEmpty = playlist_->isEmpty();
     addToFileList(filePath);
@@ -778,10 +775,12 @@ void MainWindow::keyReleaseEvent(QKeyEvent* event){
 
 void MainWindow::contextMenuEvent(QContextMenuEvent *pEvent)
 {
+    // 先清空旧 action，parent 设为 popMenu，clear() 时自动 delete
+    popMenu->clear();
 
-    QAction *fileInfoAction = new QAction("  视频信息",this);
-    QAction *keyInfoAction = new QAction("  快捷键说明",this);
-    QAction *playerInfoAction = new QAction("  v1.0.0",this);
+    QAction *fileInfoAction = new QAction("  视频信息", popMenu);
+    QAction *keyInfoAction = new QAction("  快捷键说明", popMenu);
+    QAction *playerInfoAction = new QAction("  v1.0.0", popMenu);
 
     connect(keyInfoAction, &QAction::triggered, this, [this]() {
         ShotCutDialog *shotcutdialog = new ShotCutDialog(this);
@@ -789,21 +788,17 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *pEvent)
         shotcutdialog->show();
     });
 
-
-    connect(fileInfoAction,&QAction::triggered,this,[this](){
+    connect(fileInfoAction, &QAction::triggered, this, [this](){
         VideoInfoDialog *videoinfodialog = new VideoInfoDialog(this);
         videoinfodialog->setAttribute(Qt::WA_DeleteOnClose);
         if(player_->state() != PlayerViewModel::Stopped){
             videoinfodialog->updateinformation(player_->mediaInfo());
             videoinfodialog->show();
         }else{
-            QMessageBox::information(NULL,"暂无播放视频","打开一个视频才有信息哦！",QMessageBox::Yes);
+            QMessageBox::information(nullptr, "暂无播放视频", "打开一个视频才有信息哦！", QMessageBox::Yes);
         }
-
     });
 
-
-    popMenu->clear();
     popMenu->setStyleSheet(R"(
     QMenu {
         min-width:130px;
@@ -855,17 +850,17 @@ void MainWindow::enterFullScreenMode()
 
     isFullScreenMode = true;
 
-    ui->controlBarContainer->setParent(ui->videoWidget);
+    // 不再 setParent 到 videoWidget(QOpenGLWidget)，避免 Popup/ComboBox 被 OpenGL 表面遮挡
+    // 改为从布局中取出，保持 centralwidget 为父控件，通过绝对定位悬浮在视频上方
+    if (ui->centralwidget->layout()) {
+        ui->centralwidget->layout()->removeWidget(ui->controlBarContainer);
+    }
+    ui->controlBarContainer->setParent(ui->centralwidget);
     ui->controlBarContainer->raise();
+    ui->controlBarContainer->show();
 
     QTimer::singleShot(0, this, [=]() {
-        ui->controlBarContainer->setGeometry(
-            0,
-            // 强制贴紧视频最底部
-            ui->videoWidget->height() - ui->controlBarContainer->height(),
-            ui->videoWidget->width(),
-            ui->controlBarContainer->height()
-            );
+        repositionControlBarFullScreen();
     });
 
     // 全屏透明样式
@@ -1062,7 +1057,7 @@ void MainWindow::on_rtspButton_clicked()
 
     if (dialog.exec() == QDialog::Accepted) {
         QString rtsp_url = dialog.textValue();
-        if(rtsp_url == nullptr) return;
+        if(rtsp_url.isEmpty()) return;
         addToFileList(rtsp_url);
         play(rtsp_url);
     }
@@ -1111,7 +1106,7 @@ void MainWindow::on_change_userDecoder(QString decoder)
     PlayerViewModel::State state = player_->state();
     if(state == PlayerViewModel::Stopped){
         if(decoder == "默认(推荐)"){
-            player_->setDecodeType(NULL);
+            player_->setDecodeType(QString());
         }else{
             player_->setDecodeType(decoder);
         }
@@ -1121,7 +1116,7 @@ void MainWindow::on_change_userDecoder(QString decoder)
         preview_player_->stop();
 
         if(decoder == "默认(推荐)"){
-            player_->setDecodeType(NULL);
+            player_->setDecodeType(QString());
         }else{
             player_->setDecodeType(decoder);
         }
@@ -1425,6 +1420,21 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     centerLoadingLabel();
+
+    // 全屏时需要重新定位控制栏（窗口大小变化时同步）
+    if (isFullScreenMode) {
+        repositionControlBarFullScreen();
+    }
+}
+
+void MainWindow::repositionControlBarFullScreen()
+{
+    // 将 controlBarContainer 绝对定位到 centralwidget 的底部（覆盖在 videoWidget 上方）
+    int barH = ui->controlBarContainer->height();
+    int parentW = ui->centralwidget->width();
+    int parentH = ui->centralwidget->height();
+    ui->controlBarContainer->setGeometry(0, parentH - barH, parentW, barH);
+    ui->controlBarContainer->raise();
 }
 
 // void MainWindow::on_progressSlider_sliderMoved(int position)

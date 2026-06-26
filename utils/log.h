@@ -16,7 +16,6 @@ enum class LogLevel : int {
 // 单例日志类
 class Log {
 private:
-    static Log* m_instance;
     LogLevel m_curLevel;
     std::ofstream m_file;
     bool m_isFileOpen;
@@ -30,7 +29,7 @@ private:
     QString getFileName(const char* filePath);
 
 public:
-    static Log* getInstance();
+    static Log& getInstance();
     Log(const Log&) = delete;
     Log& operator=(const Log&) = delete;
 
@@ -42,7 +41,7 @@ public:
 };
 
 // 宏定义（完全兼容原有调用方式）
-#define LOG_DEBUG(fmt, ...)  Log::getInstance()->print(LogLevel::LOG_DEBUG, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...)   Log::getInstance()->print(LogLevel::LOG_INFO, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...)   Log::getInstance()->print(LogLevel::LOG_WARN, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...)  Log::getInstance()->print(LogLevel::LOG_ERROR, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG(fmt, ...)  Log::getInstance().print(LogLevel::LOG_DEBUG, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_INFO(fmt, ...)   Log::getInstance().print(LogLevel::LOG_INFO, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_WARN(fmt, ...)   Log::getInstance().print(LogLevel::LOG_WARN, __FILE__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_ERROR(fmt, ...)  Log::getInstance().print(LogLevel::LOG_ERROR, __FILE__, __LINE__, fmt, ##__VA_ARGS__)

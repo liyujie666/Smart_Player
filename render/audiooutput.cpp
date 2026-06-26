@@ -31,7 +31,6 @@ AudioOutput::AudioOutput(const Resampler::AudioSpec &inSpec,
     }
 
     sample_rate_ = outSpec.sampleRate;
-    dump_pcm_ = fopen("audio_dump.pcm", "wb");
 
     // 初始化缓冲区（防止野指针）
     audio_buf_ = nullptr;
@@ -46,10 +45,7 @@ AudioOutput::~AudioOutput()
         delete resampler_;
         resampler_ = nullptr;
     }
-    if (dump_pcm_) {
-        fclose(dump_pcm_);
-        dump_pcm_ = nullptr;
-    }
+
 }
 
 int AudioOutput::Init()
@@ -219,12 +215,10 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
             }
 
             audio_buf_index_ = 0;
-            // {
-            //     QMutexLocker locker(&mutex_);
-            //     audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
-            // }
-            audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
-            qDebug() << "audio pts : " << audio_clock_us_;
+            {
+                QMutexLocker locker(&mutex_);
+                audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
+            }
             sync_clock_->set_audio_clock(audio_clock_us_);
 
 
@@ -239,10 +233,6 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
 
         // 音量调节
         applyVolume(stream, copy_len);
-
-        if (dump_pcm_) {
-            fwrite(audio_buf_ + audio_buf_index_, 1, copy_len, dump_pcm_);
-        }
 
         stream += copy_len;
         len_remaining -= copy_len;

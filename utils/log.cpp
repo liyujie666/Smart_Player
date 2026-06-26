@@ -4,8 +4,6 @@
 #include <cstdio>
 #include <QString>
 
-Log* Log::m_instance = nullptr;
-
 Log::Log() : m_curLevel(LogLevel::LOG_DEBUG), m_isFileOpen(false) {}
 
 Log::~Log() {
@@ -14,13 +12,9 @@ Log::~Log() {
     }
 }
 
-Log* Log::getInstance() {
-    static std::mutex s_mutex;
-    std::lock_guard<std::mutex> lock(s_mutex);
-    if (!m_instance) {
-        m_instance = new Log();
-    }
-    return m_instance;
+Log& Log::getInstance() {
+    static Log instance;
+    return instance;
 }
 
 void Log::setLevel(LogLevel level) {

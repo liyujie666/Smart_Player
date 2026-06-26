@@ -10,7 +10,7 @@
 SubtitlePopup::SubtitlePopup(QWidget *parent)
     : QWidget(parent)
 {
-    setWindowFlags(Qt::Popup | Qt::FramelessWindowHint);
+    setWindowFlags(Qt::Popup | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
 
     auto *mainLayout = new QVBoxLayout(this);
     mainLayout->setContentsMargins(12, 10, 12, 10);
