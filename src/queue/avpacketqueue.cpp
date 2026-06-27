@@ -46,7 +46,7 @@ int AVPacketQueue::Push(AVPacket *val)
 
 AVPacket *AVPacketQueue::Pop(const int timeout)
 {
-    AVPacket *tmp_pkt = NULL;
+    AVPacket *tmp_pkt = nullptr;
     int ret = queue_.Pop(tmp_pkt, timeout);
     if (ret == -1) {
         LOG_ERROR("AVPacketQueue::Pop aborted");

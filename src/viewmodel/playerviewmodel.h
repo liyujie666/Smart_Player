@@ -11,6 +11,28 @@ extern "C" {
 }
 
 /**
+ *  MediaInfo —— View 层用于"视频信息对话框"等场景的轻量 DTO
+ *
+ *  目的：把 AVFormatContext 这种"Model 内部细节"挡在 PlayerViewModel 边界，
+ *        让 View 不必 #include FFmpeg 头文件，也不必经过逃生口拿 AVFormatContext*。
+ *  生命周期：值类型，VM 在 initFinished 时构造一份并缓存；View 通过
+ *        PlayerViewModel::mediaInfo() 拷贝一次即可。
+ */
+struct MediaInfo {
+    QString fileName;          // 不含路径的文件名
+    QString filePath;          // 完整路径
+    QString formatName;        // 封装格式名（mp4 / matroska / ...）
+    qint64  durationMs   = 0;  // 总时长 ms
+    qint64  bitRate      = 0;  // 比特率 bps
+    bool    hasVideo     = false;
+    bool    hasAudio     = false;
+    QString videoPixelFormat;  // "yuv420p" 等
+    double  videoFrameRate = 0.0;
+    int     audioChannels  = 0;
+    int     audioSampleRate = 0;
+};
+
+/**
  *  PlayerViewModel
  *
  *  封装 PlayerCore，对 View 仅暴露：
@@ -70,15 +92,12 @@ public:
     QString     fileUrl() const;
     QString     currentSubtitle() const { return m_currentSubtitle; }
 
-    // 直通到 Core 的"原生句柄"——目前仅 VideoInfoDialog 等少量 View 需要。
-    // 这些不暴露成 Q_PROPERTY，是为了避免 ViewModel 层语义被原生类型污染。
-    // 阶段 1 之后会逐步收敛（例如 VideoInfoDialog 接受一个 VideoInfo 结构体而非 AVFormatContext*）。
-    AVFormatContext*    avFormatContext() const;
+    // 媒体类型（用于 View 选择渲染策略，例如 FILE_TYPE / RTSP）
     Demuxer::MediaType  mediaType() const;
 
-    // 给暂时无法迁移的极少数模块（例如 VideoSummaryManager 需要 ASR 状态等）保留逃生口。
-    // 新代码禁止使用此方法，请通过 VM 的属性 / slot / signal 完成交互。
-    PlayerCore* core() const { return m_core; }
+    // 媒体信息 DTO：View 用此读取视频元数据，不需 #include FFmpeg 头文件。
+    // initFinished 后由 VM 内部填充；初始为空。
+    const MediaInfo&    mediaInfo() const { return m_mediaInfo; }
 
 public slots:
     // ===== 命令 (Commands) =====
@@ -158,6 +177,7 @@ private:
     int         m_volume   = 50;
     int         m_speedIndex = 2;            // 1=0.5x, 2=1x, 3=1.5x, 4=2x
     QString     m_currentSubtitle;
+    MediaInfo   m_mediaInfo;
 };
 
 #endif // PLAYERVIEWMODEL_H

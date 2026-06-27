@@ -35,7 +35,7 @@ int AVFrameQueue::Push(AVFrame *val)
 
 AVFrame *AVFrameQueue::Pop(const int timeout)
 {
-    AVFrame *tmp_frame = NULL;
+    AVFrame *tmp_frame = nullptr;
     int ret = queue_.Pop(tmp_frame, timeout);
     if (ret == -1) {
         LOG_ERROR("AVFrameQueue::Pop aborted");
@@ -45,7 +45,7 @@ AVFrame *AVFrameQueue::Pop(const int timeout)
 
 AVFrame *AVFrameQueue::Front()
 {
-    AVFrame *tmp_frame = NULL;
+    AVFrame *tmp_frame = nullptr;
     int ret = queue_.Front(tmp_frame);
     if (ret == -1) {
         LOG_ERROR("AVFrameQueue::Front failed");
@@ -65,7 +65,7 @@ bool AVFrameQueue::isEmpty()
 
 void AVFrameQueue::release()
 {
-    AVFrame *frame = NULL;
+    AVFrame *frame = nullptr;
     while (true) {
         int ret = queue_.Pop(frame, 1);
         if(ret < 0) {

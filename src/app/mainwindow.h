@@ -13,7 +13,8 @@
 #include "videoitemwidget.h"
 #include "subtitlepopup.h"
 #include "configmanager.h"
-#include "videosummarymanager.h"
+#include "viewmodel/summaryviewmodel.h"
+#include "viewmodel/transcriptviewmodel.h"
 #include "summarypanel.h"
 #include "transcriptpanel.h"
 #include <QMainWindow>
@@ -141,9 +142,7 @@ private:
     void enterFullScreenMode();
     void exitFullScreenMode();
     void centerLoadingLabel();
-    // 全屏态下保持 controlBarContainer 与 videoWidget 等宽;
-    // fileList/AI 面板开关会导致 videoWidget 尺寸变化,需主动同步控制栏宽度。
-    void updateControlBarGeometry();
+    void repositionControlBarFullScreen();
 
     void setupRightPanel();
 
@@ -183,7 +182,8 @@ private:
     // 加载动画
     QLabel* loadingLabel_ = nullptr;
 
-    VideoSummaryManager* m_summaryManager = nullptr;
+    SummaryViewModel*    m_summaryVm       = nullptr;   // MVVM 阶段 3a：替换原 m_summaryManager
+    TranscriptViewModel* m_transcriptVm    = nullptr;   // MVVM 阶段 3b：拆解 TranscriptPanel
     SummaryPanel*        m_summaryPanel    = nullptr;
     TranscriptPanel*     m_transcriptPanel = nullptr;
     QDockWidget*         m_rightDock       = nullptr;   // 合并后的右侧 dock（内含 tab）

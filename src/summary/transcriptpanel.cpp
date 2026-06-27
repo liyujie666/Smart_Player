@@ -27,7 +27,7 @@
 #include <cmath>
 
 // =============================================================
-// 内部工具
+// 内部工具（仅 UI 绘制相关）
 // =============================================================
 namespace {
 
@@ -43,26 +43,11 @@ static const QColor kTimeGray       = QColor("#6B7280");
 static const QColor kHoverBg        = QColor("#F3F4F6");
 static const QColor kKaraokeBlue    = QColor("#0EA5E9");
 
-// 段落/章节头参数
 static const int kParaPadLeft      = 8;
 static const int kParaPadRight     = 10;
 static const int kParaPadTop       = 6;
 static const int kParaPadBottom    = 6;
 static const int kParaLineSpacing  = 2;
-
-// 句子拼接：句子间用"空格"隔开，去掉多余空行/收尾空白
-static QString joinSentences(const QStringList& lines) {
-    QStringList cleaned;
-    cleaned.reserve(lines.size());
-    for (const QString& s : lines) {
-        QString t = s;
-        // 折叠内部空白
-        t = t.simplified();
-        if (t.isEmpty()) continue;
-        cleaned.append(t);
-    }
-    return cleaned.join(' ');
-}
 
 } // namespace
 
@@ -100,7 +85,6 @@ QSize TranscriptItemDelegate::sizeHint(const QStyleOptionViewItem& o, const QMod
     if (row.type == RowType::ChapterHeader) {
         return QSize(w, 26);
     }
-    // Paragraph：用 QTextLayout 预计算高度
     QFont textFont;
     textFont.setFamily(QStringLiteral("Microsoft YaHei"));
     textFont.setPointSize(9);
@@ -108,13 +92,7 @@ QSize TranscriptItemDelegate::sizeHint(const QStyleOptionViewItem& o, const QMod
 
     int textWidth = w - kParaPadLeft - kParaPadRight;
 
-    // 关键：viewport 首次 layout 完成前 listWidth() 可能为 0；
-    // 这种情况下不能用 textWidth=10 喂 QTextLayout（会把段落折成几十行），
-    // 而是给一个保守的"未折行"高度，等 viewport resize 触发后 view 再重算。
-    // 另外即使 textWidth 偏小（比如 < 60），textWidth 与真实宽度的偏差太大，估算没意义。
     if (textWidth < 60) {
-        // 保守给 1 行 + 上下 padding（实际尺寸会在 viewport 有真实宽度时通过
-        // scheduleSizeHintRefresh() 主动 doItemsLayout 重算）
         return QSize(w, kParaPadTop + fm.height() + kParaPadBottom);
     }
 
@@ -145,12 +123,9 @@ bool TranscriptItemDelegate::editorEvent(QEvent* event, QAbstractItemModel* mode
     if (event->type() == QEvent::MouseButtonPress) {
         QMouseEvent* me = static_cast<QMouseEvent*>(event);
         QPoint local = me->pos() - option.rect.topLeft();
-        // 章节头：单击只折叠 / 展开，seek 走双击
         return m_panel->handleHeaderClick(index.row(), local, option.rect);
     }
     if (event->type() == QEvent::MouseButtonDblClick) {
-        // 章节头：双击 seek 到章节开始（QListWidget 也会发 itemDoubleClicked，
-        // 但我们这里通过 editorEvent 提前拦截，确保语义统一）
         const QList<RowItem>& rows = m_panel->rows();
         if (index.row() < rows.size() && rows[index.row()].type == RowType::ChapterHeader) {
             QPoint vp = static_cast<QMouseEvent*>(event)->pos();
@@ -174,16 +149,14 @@ void TranscriptItemDelegate::paintChapterHeader(QPainter* p, const QStyleOptionV
     int left = r.left() + (isCurrent ? 8 + 3 : 8);
     int top = r.top();
 
-    // 折叠/展开图标（PNG）
     static const QPixmap s_arrowDown  = QPixmap(QStringLiteral(":/SmartPlayer-icon/arrow_down_dark.png"));
     static const QPixmap s_arrowRight = QPixmap(QStringLiteral(":/SmartPlayer-icon/arrow_right_dark.png"));
     const QPixmap& arrow = row.collapsed ? s_arrowRight : s_arrowDown;
-    int iconSize = 12;  // 章节头只有 26px 高，12 适配
+    int iconSize = 12;
     int iconY = r.top() + (r.height() - iconSize) / 2;
     if (!arrow.isNull()) {
         p->drawPixmap(left, iconY, iconSize, iconSize, arrow);
     } else {
-        // 资源加载失败兜底：用字符箭头
         p->setPen(kHeaderUnread);
         QFont iconFont = p->font();
         iconFont.setPointSize(7);
@@ -193,7 +166,6 @@ void TranscriptItemDelegate::paintChapterHeader(QPainter* p, const QStyleOptionV
     }
     left += 16;
 
-    // 章节时间范围
     QFont timeFont = p->font();
     timeFont.setFamily(QStringLiteral("Consolas"));
     timeFont.setPointSize(8);
@@ -203,7 +175,6 @@ void TranscriptItemDelegate::paintChapterHeader(QPainter* p, const QStyleOptionV
     p->drawText(QRect(left, top, 96, r.height()), Qt::AlignVCenter | Qt::AlignLeft, timeText);
     left += 100;
 
-    // 章节标题
     QFont titleFont = p->font();
     titleFont.setFamily(QStringLiteral("Microsoft YaHei"));
     titleFont.setPointSize(9);
@@ -231,11 +202,10 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
     QRect r = o.rect;
     p->save();
 
-    // 1) 收集每句在 displayText 中的 [start, end) 区间
     struct SubRun {
         int subIdx;
-        int startUtf16;   // 包含
-        int endUtf16;     // 不包含
+        int startUtf16;
+        int endUtf16;
         qint64 startMs;
         qint64 endMs;
     };
@@ -252,11 +222,10 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
             runs.append({si, s, e,
                          qint64(std::llround(subs[si].start_sec * 1000.0)),
                          qint64(std::llround(subs[si].end_sec   * 1000.0))});
-            cursor = e + 1; // +1 是分隔空格
+            cursor = e + 1;
         }
     }
 
-    // 2) 字体
     QFont textFont;
     textFont.setFamily(QStringLiteral("Microsoft YaHei"));
     textFont.setPointSize(9);
@@ -268,12 +237,9 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
     int textWidth  = textRight - textLeft;
     if (textWidth < 10) textWidth = 10;
     int textTop    = r.top() + kParaPadTop;
-    int textBottom = r.bottom() - kParaPadBottom;
 
-    // 3) 段落白底
     p->fillRect(r, Qt::white);
 
-    // 4) QTextLayout 折行
     QTextLayout layout(row.displayText, textFont);
     QTextOption opt;
     opt.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
@@ -291,19 +257,17 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
     }
     layout.endLayout();
 
-    // 清掉旧的本行 hit rects
     if (m_panel) m_panel->clearHitRectsForRow(rowInList);
 
     int activeIdx = m_panel->activeSubtitleIdx();
     qint64 curPos = m_panel->currentPosMs();
     bool wordLevel = m_panel->wordLevelEnabled();
 
-    // 5) 准备"行 × 句子"的 spans 序列，用于有序绘制背景 + 字符
     struct Span {
         const QTextLine* tl;
-        int a;        // 行内起点（含）
-        int b;        // 行内终点（不含）
-        int runIdx;   // 在 runs 中的索引，便于反查 run 信息
+        int a;
+        int b;
+        int runIdx;
     };
     QList<Span> spans;
     spans.reserve(runs.size() * 2);
@@ -323,7 +287,6 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
         }
     }
 
-    // 行级矩形工具
     auto lineRectFor = [&](const QTextLine& tl, int a, int b) -> QRect {
         if (b <= a) return QRect();
         qreal xa = tl.cursorToX(a);
@@ -332,7 +295,6 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
                      QPointF(xb, tl.y() + fm.height()).toPoint());
     };
 
-    // 6) 画背景：每行每句分别 fill，不再跨行合并 → 不会盖下一句
     auto bgKindFor = [&](int subIdx) -> int {
         if (subIdx == m_panel->hoverSubtitleIdx()) return 2;
         if (subIdx == activeIdx) return 1;
@@ -355,7 +317,6 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
         }
     }
 
-    // 7) 记录 hit rect：每 subIdx 把所有行级矩形合并成一个，再扩边
     {
         QHash<int, QVector<QRect>> perSub;
         for (const Span& sp : spans) {
@@ -371,40 +332,31 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
                 else        { hit = hit.united(rr); }
             }
             if (!hit.isEmpty()) {
-                // hit rect 紧贴文字本身（不再外扩 3px），
-                // 否则段落行间 padding 会被相邻句子的 hit rect 吞掉，
-                // 鼠标停在"看起来是空白"的 padding 区会被识别成在某个句子上、显示 tooltip
                 m_panel->addHitRect(rowInList, it.key(), hit);
             }
         }
     }
 
-    // 8) 搜索关键词：在每个 run 范围内找 keyword 子串，
-    //    画一个"更深"的背景条 + 重画字符作为"关键词高亮"（而不是整句染黄）
     struct KwHit { int a; int b; int runIdx; };
     QList<KwHit> kwHits;
     const QString kw = m_panel->searchKeyword();
     if (!kw.isEmpty()) {
         for (int ri = 0; ri < runs.size(); ++ri) {
             const SubRun& run = runs[ri];
-            // 用 runs 里逐句找，避免跨句的误匹配；句内逐行扫
             QString text = row.displayText.mid(run.startUtf16, run.endUtf16 - run.startUtf16);
             int fromInRun = 0;
             while (fromInRun < text.size()) {
-                int p = text.indexOf(kw, fromInRun, Qt::CaseInsensitive);
-                if (p < 0) break;
-                int a = run.startUtf16 + p;
+                int pIdx = text.indexOf(kw, fromInRun, Qt::CaseInsensitive);
+                if (pIdx < 0) break;
+                int a = run.startUtf16 + pIdx;
                 int b = a + kw.size();
                 kwHits.append({a, b, ri});
-                fromInRun = p + kw.size();
-                if (kw.size() == 0) break;  // 防御空串死循环
+                fromInRun = pIdx + kw.size();
+                if (kw.size() == 0) break;
             }
         }
-        // 关键词背景：深黄底（与"整句浅黄"区分开）
-        const QColor kKwBg(0xFF, 0xC1, 0x07);  // 亮金黄
-        const QColor kKwFg(0x00, 0x00, 0x00);  // 黑字
-        // 对每个 kwHit，按行切分（同一个 kwHit 可能跨多行，但同一句内基本不会），
-        // 简化：直接 lineRectFor 拿矩形
+        const QColor kKwBg(0xFF, 0xC1, 0x07);
+        const QColor kKwFg(0x00, 0x00, 0x00);
         for (const KwHit& kh : kwHits) {
             for (const QTextLine& tl : lines) {
                 int ls = tl.textStart();
@@ -417,7 +369,6 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
                 QRect r2 = lineRectFor(tl, a, b);
                 if (r2.isEmpty()) continue;
                 p->fillRect(r2, kKwBg);
-                // 重画字符（黑字）
                 p->setPen(kKwFg);
                 p->drawText(QRectF(r2.left(), tl.y(), r2.width(), fm.height()),
                             Qt::AlignLeft | Qt::AlignVCenter | Qt::TextSingleLine,
@@ -426,8 +377,6 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
         }
     }
 
-    // 9) 画字符：按 spans 顺序逐字符绘制，rel 用"句首偏移"算 K 歌字级
-    //    命中搜索关键词的位置跳过（已在 step 8 用更显眼的样式画过）
     auto isInKwHit = [&](int utf16Pos) -> bool {
         for (const KwHit& kh : kwHits) {
             if (utf16Pos >= kh.a && utf16Pos < kh.b) return true;
@@ -443,13 +392,13 @@ void TranscriptItemDelegate::paintParagraph(QPainter* p, const QStyleOptionViewI
         for (int i = sp.a; i < sp.b; ++i) {
             QChar c = row.displayText.at(i);
             if (c.isSpace()) continue;
-            if (isInKwHit(i)) continue;  // 关键词子串已用深黄底+黑字画过
+            if (isInKwHit(i)) continue;
             QColor col;
             if (karaokeActive) {
                 auto itc = caches.constFind(run.subIdx);
                 SubtitleLineCache* cache = (itc != caches.constEnd()) ? itc.value() : nullptr;
                 if (cache && !cache->words.isEmpty()) {
-                    int rel = i - run.startUtf16;  // 字符在句内的 utf16 偏移
+                    int rel = i - run.startUtf16;
                     int wIdx = -1;
                     for (int wi = 0; wi < cache->words.size(); ++wi) {
                         const WordSegment& w = cache->words[wi];
@@ -559,13 +508,9 @@ TranscriptPanel::TranscriptPanel(QWidget* parent) : QWidget(parent) {
     m_list->setFocusPolicy(Qt::NoFocus);
     m_list->viewport()->installEventFilter(this);
     m_list->viewport()->setMouseTracking(true);
-    // 默认 list 占 stretch=1，empty 时改为 Ignored（避免不可见时仍撑高布局）
     m_list->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     vbox->addWidget(m_list, 1);
 
-    // viewport 第一次有真实宽度时，重算所有 sizeHint
-    // （首次 rebuildListWidget 时 viewport 可能尚未 layout，sizeHint 会拿到
-    //  listWidth()=0 的兜底值，导致段落被错算成几十行高）
     QTimer::singleShot(0, this, [this]() {
         if (m_list && m_list->viewport()->width() > 0) {
             m_list->doItemsLayout();
@@ -584,7 +529,6 @@ TranscriptPanel::TranscriptPanel(QWidget* parent) : QWidget(parent) {
     m_emptyLabel->setVisible(true);
     vbox->addWidget(m_emptyLabel);
 
-    // 启动就是 empty 状态：list 不可见 + Ignored，避免 list 仍按默认 sizeHint 撑高布局
     m_list->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
     m_list->setVisible(false);
 
@@ -678,241 +622,130 @@ TranscriptPanel::TranscriptPanel(QWidget* parent) : QWidget(parent) {
     )"));
 }
 
-TranscriptPanel::~TranscriptPanel() {
-    qDeleteAll(m_lineCache);
-    m_lineCache.clear();
-}
+TranscriptPanel::~TranscriptPanel() = default;
 
-void TranscriptPanel::setVideoPath(const QString& path) {
-    if (path == m_currentVideoPath) return;
-    m_currentVideoPath = path;
-    clearAll();
-}
+// =============================================================
+// VM 绑定
+// =============================================================
+void TranscriptPanel::bindViewModel(TranscriptViewModel* vm) {
+    m_vm = vm;
+    if (!m_vm) return;
 
-void TranscriptPanel::clearAll() {
-    m_subtitles.clear();
-    m_chapters.clear();
-    m_segments.clear();
-    m_rows.clear();
-    m_hitRects.clear();
-    qDeleteAll(m_lineCache);
-    m_lineCache.clear();
-    m_searchHitRows.clear();
-    if (m_list) m_list->clear();
-    if (m_search) m_search->clear();
-    m_searchKeyword.clear();
-    m_currentPosMs = -1;
-    m_activeSubtitleIdx = -1;
-    m_activeChapterIdx = -1;
-    m_hoverSubtitleIdx = -1;
-    m_totalDurationMs = 0;
-    m_hasChapters = m_hasSubtitles = m_hasSegments = false;
-    m_autoScroll = true;
-    if (m_emptyLabel) {
-        m_emptyLabel->setVisible(true);
-        m_emptyLabel->setText(QStringLiteral(u"📝 暂无字幕\n请先在「AI 视频总结」中点击「开始分析」"));
-        m_emptyLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
-    }
-    if (m_list) {
-        m_list->setVisible(false);
-        m_list->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-    }
-}
+    connect(m_vm, &TranscriptViewModel::rowsRebuilt,
+            this, &TranscriptPanel::onVmRowsRebuilt);
+    connect(m_vm, &TranscriptViewModel::rowsCollapseChanged,
+            this, &TranscriptPanel::onVmRowsCollapseChanged);
+    connect(m_vm, &TranscriptViewModel::activeIndexChanged,
+            this, &TranscriptPanel::onVmActiveIndexChanged);
+    connect(m_vm, &TranscriptViewModel::searchChanged,
+            this, &TranscriptPanel::onVmSearchChanged);
+    connect(m_vm, &TranscriptViewModel::dataReady,
+            this, &TranscriptPanel::onVmDataReady);
 
-void TranscriptPanel::setSubtitleItems(const QList<SubtitleItem>& items) {
-    m_subtitles = items;
-    m_hasSubtitles = !items.isEmpty();
-    qDeleteAll(m_lineCache);
-    m_lineCache.clear();
-    scheduleRebuildIfReady();
-}
+    // 用户意图：VM 把 "请求 seek" 通过 panel.seekTo 信号广播给 MainWindow
+    connect(m_vm, &TranscriptViewModel::seekRequested,
+            this, &TranscriptPanel::seekTo);
 
-void TranscriptPanel::setChapters(const QList<SummaryChapter>& chapters) {
-    m_chapters = chapters;
-    m_hasChapters = !chapters.isEmpty();
-    scheduleRebuildIfReady();
-}
-
-void TranscriptPanel::setSegments(const QList<SummarySegment>& segments) {
-    m_segments = segments;
-    m_hasSegments = !segments.isEmpty();
-    scheduleRebuildIfReady();
-}
-
-void TranscriptPanel::setDuration(qint64 ms) {
-    m_totalDurationMs = ms * 1000;
-}
-
-QString TranscriptPanel::formatTime(qint64 ms) const {
-    if (ms < 0) ms = 0;
-    int totalSec = int(ms / 1000);
-    int h = totalSec / 3600;
-    int m = (totalSec % 3600) / 60;
-    int s = totalSec % 60;
-    if (h > 0) return QString::asprintf("%d:%02d:%02d", h, m, s);
-    return QString::asprintf("%02d:%02d", m, s);
-}
-
-void TranscriptPanel::scheduleRebuildIfReady() {
-    if (!m_hasSubtitles) {
-        // empty 状态：把 list 完全从布局中"忽略"掉（setVisible(false) 仍会占 stretch 空间），
-        // 避免它在 vbox 里继续撑高，导致工具栏被往下推
-        if (m_list) {
-            m_list->setVisible(false);
-            m_list->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-        }
-        if (m_emptyLabel) {
-            m_emptyLabel->setVisible(true);
-            m_emptyLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
-        }
-        return;
-    }
-    rebuildRows();
-    rebuildListWidget();
-    if (m_emptyLabel) {
-        m_emptyLabel->setVisible(false);
-        m_emptyLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
-    }
-    if (m_list) {
-        m_list->setVisible(true);
-        m_list->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    }
-
-    if (!m_searchKeyword.isEmpty()) {
-        onSearchTextChanged(m_searchKeyword);
-    }
-    if (m_currentPosMs >= 0) {
-        applyHighlight(m_currentPosMs);
-    }
-}
-
-void TranscriptPanel::rebuildRows() {
-    m_rows.clear();
-
-    struct Block { qint64 startMs, endMs; QString title; };
-    QList<Block> blocks;
-
-    if (!m_chapters.isEmpty()) {
-        for (int i = 0; i < m_chapters.size(); ++i) {
-            const auto& ch = m_chapters[i];
-            QString title = ch.title.isEmpty()
-                ? QStringLiteral(u"第 %1 段").arg(i + 1)
-                : ch.title;
-            blocks.append({ch.startMs, ch.endMs, title});
-        }
-    } else if (!m_segments.isEmpty()) {
-        for (int i = 0; i < m_segments.size(); ++i) {
-            const auto& seg = m_segments[i];
-            blocks.append({seg.startMs, seg.endMs,
-                           QStringLiteral(u"第 %1 段").arg(i + 1)});
-        }
-    } else if (!m_subtitles.isEmpty()) {
-        blocks.append({0, m_totalDurationMs, QStringLiteral(u"全文")});
-    } else {
-        return;
-    }
-
-    std::sort(blocks.begin(), blocks.end(), [](const Block& a, const Block& b) {
-        return a.startMs < b.startMs;
-    });
-
-    for (int i = 0; i < blocks.size(); ++i) {
-        if (blocks[i].endMs <= blocks[i].startMs) {
-            blocks[i].endMs = blocks[i].startMs + 1;
-        }
-        if (i + 1 < blocks.size() && blocks[i].endMs > blocks[i + 1].startMs) {
-            blocks[i].endMs = blocks[i + 1].startMs;
-        }
-    }
-
-    for (int bi = 0; bi < blocks.size(); ++bi) {
-        const Block& b = blocks[bi];
-
-        // 收集属于本章节的字幕索引
-        QList<int> subIndices;
-        QStringList texts;
-        qint64 blockStartMs = b.startMs, blockEndMs = b.endMs;
-        for (int si = 0; si < m_subtitles.size(); ++si) {
-            const auto& sub = m_subtitles[si];
-            qint64 subStart = qint64(std::llround(sub.start_sec * 1000.0));
-            qint64 subEnd   = qint64(std::llround(sub.end_sec * 1000.0));
-            if (subEnd > b.startMs && subStart < b.endMs) {
-                subIndices.append(si);
-                texts.append(QString::fromStdString(sub.text));
-            }
-        }
-        if (subIndices.isEmpty()) continue;
-
-        // 章节头
-        RowItem header;
-        header.type = RowType::ChapterHeader;
-        header.chapterIndex = bi;
-        header.subtitleIndex = -1;
-        header.firstSubtitleIndex = subIndices.first();
-        header.subtitleIndices = subIndices;
-        header.startMs = b.startMs;
-        header.endMs = b.endMs;
-        header.displayTime = QStringLiteral(u"%1 - %2")
-            .arg(formatTime(b.startMs), formatTime(b.endMs));
-        header.displayText = b.title;
-        header.collapsed = false;
-        m_rows.append(header);
-
-        // 段落
-        RowItem para;
-        para.type = RowType::Paragraph;
-        para.chapterIndex = bi;
-        para.firstSubtitleIndex = subIndices.first();
-        para.subtitleIndex = subIndices.first();
-        para.subtitleIndices = subIndices;
-        para.startMs = blockStartMs;
-        para.endMs = blockEndMs;
-        para.displayTime = header.displayTime;
-        para.displayText = joinSentences(texts);
-        para.collapsed = false;
-        m_rows.append(para);
-
-        // 预建字级缓存（K 歌用）
-        for (int si : subIndices) ensureLineCache(si);
-    }
-}
-
-void TranscriptPanel::rebuildListWidget() {
-    if (!m_list) return;
-    m_list->blockSignals(true);
-    m_list->clear();
-    for (int i = 0; i < m_rows.size(); ++i) {
-        QListWidgetItem* it = new QListWidgetItem(m_list);
-        it->setData(Qt::UserRole, i);
-        it->setFlags(Qt::ItemIsEnabled);
-    }
-    applyCollapseToList();
-    m_list->blockSignals(false);
-}
-
-void TranscriptPanel::applyCollapseToList() {
-    if (!m_list) return;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        const RowItem& r = m_rows[i];
-        QListWidgetItem* it = m_list->item(i);
-        if (!it) continue;
-        if (r.type == RowType::Paragraph) {
-            bool visible = true;
-            for (const RowItem& h : m_rows) {
-                if (h.type == RowType::ChapterHeader && h.chapterIndex == r.chapterIndex) {
-                    visible = !h.collapsed;
-                    break;
-                }
-            }
-            it->setHidden(!visible);
-        } else {
-            it->setHidden(false);
-        }
-    }
+    // 初始同步一次
+    onVmDataReady();
+    onVmRowsRebuilt();
 }
 
 // =============================================================
-// Hit rects（paint 时更新，hover/click 用）
+// 透传到 VM 的便捷 slot
+// =============================================================
+void TranscriptPanel::setVideoPath(const QString& path) {
+    if (!m_vm) return;
+    m_vm->setVideoPath(path);
+}
+
+void TranscriptPanel::clearAll() {
+    if (!m_vm) return;
+    m_vm->clearAll();
+    m_hitRects.clear();
+    m_hoverSubtitleIdx = -1;
+    if (m_search) m_search->clear();
+}
+
+void TranscriptPanel::setSubtitleItems(const QList<SubtitleItem>& items) {
+    if (!m_vm) return;
+    m_vm->setSubtitles(items);
+}
+
+void TranscriptPanel::setChapters(const QList<SummaryChapter>& chapters) {
+    if (!m_vm) return;
+    m_vm->setChapters(chapters);
+}
+
+void TranscriptPanel::setSegments(const QList<SummarySegment>& segments) {
+    if (!m_vm) return;
+    m_vm->setSegments(segments);
+}
+
+void TranscriptPanel::setDuration(qint64 ms) {
+    if (!m_vm) return;
+    m_vm->setDuration(ms);
+}
+
+void TranscriptPanel::onPositionChanged(qint64 positionMs) {
+    if (!m_vm) return;
+    m_pendingPositionMs = positionMs;
+    if (m_vm->rows().isEmpty()) return;
+
+    // 当前句不变 + 逐字开启 → 立即重绘当前 paragraph（K 歌持续变色）
+    int newSubIdx = m_vm->findActiveSubtitleIndex(positionMs * 1000);
+    if (newSubIdx == m_vm->activeSubtitleIdx() && newSubIdx >= 0 && m_vm->wordLevelEnabled()) {
+        // 仅同步 VM 内部 currentPosMs（不重算 active），由 onVmActiveIndex 不会触发，View 直接重绘
+        m_vm->updatePosition(positionMs);
+        int rowIdx = m_vm->findRowIndexBySubtitle(newSubIdx);
+        if (rowIdx >= 0 && m_list) {
+            QListWidgetItem* it = m_list->item(rowIdx);
+            if (it) m_list->update(m_list->indexFromItem(it));
+        }
+        return;
+    }
+
+    if (!m_throttleTimer->isActive()) {
+        m_throttleTimer->start();
+    }
+}
+
+void TranscriptPanel::onThrottleTimeout() {
+    if (!m_vm) return;
+    m_vm->updatePosition(m_pendingPositionMs);
+}
+
+// =============================================================
+// 数据访问透传
+// =============================================================
+const QList<RowItem>& TranscriptPanel::rows() const {
+    static const QList<RowItem> kEmpty;
+    return m_vm ? m_vm->rows() : kEmpty;
+}
+int TranscriptPanel::activeSubtitleIdx() const { return m_vm ? m_vm->activeSubtitleIdx() : -1; }
+int TranscriptPanel::activeChapterIdx()  const { return m_vm ? m_vm->activeChapterIdx()  : -1; }
+qint64 TranscriptPanel::currentPosMs()   const { return m_vm ? m_vm->currentPositionMs() : -1; }
+bool TranscriptPanel::wordLevelEnabled() const { return m_vm ? m_vm->wordLevelEnabled() : true; }
+bool TranscriptPanel::isSearchHit(int subtitleIndex) const { return m_vm && m_vm->isSearchHit(subtitleIndex); }
+int  TranscriptPanel::activeWordInLine(int subtitleIndex, qint64 posMs) const {
+    return m_vm ? m_vm->activeWordInLine(subtitleIndex, posMs) : -1;
+}
+const QList<SubtitleItem>& TranscriptPanel::subtitles() const {
+    static const QList<SubtitleItem> kEmpty;
+    return m_vm ? m_vm->subtitles() : kEmpty;
+}
+QHash<int, SubtitleLineCache*> TranscriptPanel::lineCache() const {
+    return m_vm ? m_vm->lineCache() : QHash<int, SubtitleLineCache*>{};
+}
+QString TranscriptPanel::tooltipForSubtitle(int subtitleIndex) const {
+    return m_vm ? m_vm->tooltipForSubtitle(subtitleIndex) : QString();
+}
+QString TranscriptPanel::searchKeyword() const {
+    return m_vm ? m_vm->searchKeyword() : QString();
+}
+
+// =============================================================
+// Hit rects（View 局部 UI 状态）
 // =============================================================
 void TranscriptPanel::clearHitRects() { m_hitRects.clear(); }
 void TranscriptPanel::clearHitRectsForRow(int rowInList) {
@@ -934,193 +767,161 @@ int TranscriptPanel::listWidth() const {
     return m_list->viewport()->width();
 }
 
-QString TranscriptPanel::tooltipForSubtitle(int subtitleIndex) const {
-    if (subtitleIndex < 0 || subtitleIndex >= m_subtitles.size()) return QString();
-    const SubtitleItem& sub = m_subtitles[subtitleIndex];
-    qint64 startMs = qint64(std::llround(sub.start_sec * 1000.0));
-    qint64 endMs   = qint64(std::llround(sub.end_sec   * 1000.0));
-    return QStringLiteral(u"⏱ %1 — %2")
-        .arg(formatTime(startMs), formatTime(endMs));
-}
-
 // =============================================================
-// 染色
+// 渲染响应 VM 的 signal
 // =============================================================
-void TranscriptPanel::onPositionChanged(qint64 positionMs) {
-    m_currentPosMs = positionMs * 1000;
-    if (m_rows.isEmpty()) return;
-
-    int newSubIdx = findActiveSubtitleIndex(m_currentPosMs);
-
-    // 当前行（章节）没变 + 逐字开启 → 重绘当前 paragraph（K 歌持续变色）
-    if (newSubIdx == m_activeSubtitleIdx && newSubIdx >= 0 && m_wordLevelEnabled) {
-        int rowIdx = findRowIndexBySubtitle(newSubIdx);
-        if (rowIdx >= 0) {
-            QListWidgetItem* it = m_list->item(rowIdx);
-            if (it) m_list->update(m_list->indexFromItem(it));
-        }
-        return;
-    }
-
-    if (!m_throttleTimer->isActive()) {
-        m_throttleTimer->start();
+void TranscriptPanel::onVmRowsRebuilt() {
+    rebuildListWidget();
+    if (m_vm && !m_vm->searchKeyword().isEmpty()) {
+        // 重建后强制刷新视口
+        if (m_list) m_list->viewport()->update();
     }
 }
 
-void TranscriptPanel::onThrottleTimeout() {
-    applyHighlight(m_currentPosMs);
+void TranscriptPanel::onVmRowsCollapseChanged() {
+    applyCollapseToList();
 }
 
-void TranscriptPanel::applyHighlight(qint64 posMs) {
-    if (m_rows.isEmpty()) return;
-
-    int newSubIdx = findActiveSubtitleIndex(posMs);
-    int oldSubIdx = m_activeSubtitleIdx;
-    m_activeSubtitleIdx = newSubIdx;
-
-    int newChIdx = -1;
-    if (newSubIdx >= 0) {
-        int rowIdx = findRowIndexBySubtitle(newSubIdx);
-        if (rowIdx >= 0) newChIdx = m_rows[rowIdx].chapterIndex;
-    }
-    int oldChIdx = m_activeChapterIdx;
-    m_activeChapterIdx = newChIdx;
-
-    bool rowChanged = (oldSubIdx != newSubIdx);
-    bool chChanged  = (oldChIdx != newChIdx);
-
-    if (!rowChanged && !chChanged) {
-        if (newSubIdx >= 0 && m_wordLevelEnabled) {
-            int r = findRowIndexBySubtitle(newSubIdx);
-            if (r >= 0) {
-                QListWidgetItem* it = m_list->item(r);
-                if (it) m_list->update(m_list->indexFromItem(it));
-            }
-        }
-        return;
-    }
-
-    QList<int> dirtyRows;
-    if (oldSubIdx >= 0) {
-        int r = findRowIndexBySubtitle(oldSubIdx);
-        if (r >= 0) dirtyRows << r;
-    }
-    if (newSubIdx >= 0) {
-        int r = findRowIndexBySubtitle(newSubIdx);
-        if (r >= 0) dirtyRows << r;
-    }
-    if (chChanged) {
-        if (oldChIdx >= 0) {
-            int r = findRowIndexByChapter(oldChIdx);
-            if (r >= 0) dirtyRows << r;
-        }
-        if (newChIdx >= 0) {
-            int r = findRowIndexByChapter(newChIdx);
-            if (r >= 0) dirtyRows << r;
-        }
-    }
-    for (int r : dirtyRows) {
-        QListWidgetItem* it = m_list->item(r);
-        if (it) m_list->update(m_list->indexFromItem(it));
-    }
-
-    if (m_autoScroll) {
+void TranscriptPanel::onVmActiveIndexChanged() {
+    if (!m_list) return;
+    // 只更新视口，让 ItemDelegate 重绘当前活动 row + 邻近 row
+    m_list->viewport()->update();
+    if (m_vm && m_vm->autoScroll()) {
         scrollToActiveRow();
     }
 }
 
-int TranscriptPanel::findActiveSubtitleIndex(qint64 posMs) const {
-    if (m_subtitles.isEmpty()) return -1;
-    int lo = 0, hi = m_subtitles.size() - 1, ans = -1;
-    while (lo <= hi) {
-        int mid = (lo + hi) / 2;
-        qint64 s = qint64(std::llround(m_subtitles[mid].start_sec * 1000.0));
-        if (s <= posMs) { ans = mid; lo = mid + 1; }
-        else            { hi = mid - 1; }
+void TranscriptPanel::onVmSearchChanged(const QString& /*kw*/) {
+    if (!m_list || !m_vm) return;
+    m_list->viewport()->update();
+    // 滚到第一个命中的段落 row
+    int firstRow = -1;
+    const QList<RowItem>& rs = m_vm->rows();
+    for (int i = 0; i < rs.size(); ++i) {
+        if (rs[i].type != RowType::Paragraph) continue;
+        for (int si : rs[i].subtitleIndices) {
+            if (m_vm->isSearchHit(si)) { firstRow = i; break; }
+        }
+        if (firstRow >= 0) break;
     }
-    if (ans < 0) return -1;
-    qint64 endMs = qint64(std::llround(m_subtitles[ans].end_sec * 1000.0));
-    if (posMs <= endMs) return ans;
-    if (ans + 1 < m_subtitles.size()) {
-        qint64 nextStart = qint64(std::llround(m_subtitles[ans + 1].start_sec * 1000.0));
-        if (posMs < nextStart) return ans;
-        return ans;
+    if (firstRow >= 0) {
+        m_list->scrollToItem(m_list->item(firstRow), QAbstractItemView::PositionAtCenter);
     }
-    return ans;
 }
 
-int TranscriptPanel::findRowIndexBySubtitle(int subtitleIndex) const {
-    if (subtitleIndex < 0) return -1;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        const RowItem& r = m_rows[i];
-        // 段落：subtitleIndex 落入任一子句索引
-        if (r.type == RowType::Paragraph && r.subtitleIndices.contains(subtitleIndex)) return i;
-        if (r.type == RowType::ChapterHeader && r.subtitleIndex == subtitleIndex) return i;
-    }
-    return -1;
-}
-
-int TranscriptPanel::findRowIndexByChapter(int chapterIndex) const {
-    if (chapterIndex < 0) return -1;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type == RowType::ChapterHeader && m_rows[i].chapterIndex == chapterIndex) {
-            return i;
+void TranscriptPanel::onVmDataReady() {
+    if (!m_vm) return;
+    bool empty = !m_vm->hasSubtitles();
+    if (empty) {
+        if (m_list) {
+            m_list->setVisible(false);
+            m_list->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+        }
+        if (m_emptyLabel) {
+            m_emptyLabel->setVisible(true);
+            m_emptyLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+        }
+    } else {
+        if (m_emptyLabel) {
+            m_emptyLabel->setVisible(false);
+            m_emptyLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Ignored);
+        }
+        if (m_list) {
+            m_list->setVisible(true);
+            m_list->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         }
     }
-    return -1;
 }
 
-int TranscriptPanel::getBlockState(int chapterIndex) const {
-    if (chapterIndex < 0) return -1;
-    qint64 s = 0, e = 0;
-    bool found = false;
-    for (const RowItem& r : m_rows) {
-        if (r.type == RowType::ChapterHeader && r.chapterIndex == chapterIndex) {
-            s = r.startMs; e = r.endMs; found = true; break;
-        }
+// =============================================================
+// View → VM 命令转发
+// =============================================================
+void TranscriptPanel::onSearchTextChanged(const QString& kw) {
+    if (!m_vm) return;
+    m_vm->setSearchKeyword(kw);
+}
+
+void TranscriptPanel::onWordLevelToggled(bool on) {
+    if (!m_vm) return;
+    m_vm->setWordLevelEnabled(on);
+    if (m_list) m_list->viewport()->update();
+}
+
+void TranscriptPanel::onCollapseFinishedClicked() { if (m_vm) m_vm->collapseAllFinishedChapters(); }
+void TranscriptPanel::onExpandAllClicked()        { if (m_vm) m_vm->expandAll(); }
+void TranscriptPanel::onCollapseAllClicked()      { if (m_vm) m_vm->collapseAll(); }
+
+void TranscriptPanel::onScrollChanged() {
+    if (!m_vm) return;
+    if (!m_vm->autoScroll()) return;
+    m_vm->setAutoScroll(false);
+    m_autoScrollResumeTimer->start();
+}
+
+void TranscriptPanel::onAutoScrollResume() {
+    if (!m_vm) return;
+    m_vm->setAutoScroll(true);
+    if (m_vm->activeSubtitleIdx() >= 0) {
+        scrollToActiveRow();
     }
-    if (!found) {
-        if (chapterIndex >= 0 && chapterIndex < m_chapters.size()) {
-            s = m_chapters[chapterIndex].startMs;
-            e = m_chapters[chapterIndex].endMs;
+}
+
+// =============================================================
+// list rebuild / collapse
+// =============================================================
+void TranscriptPanel::rebuildListWidget() {
+    if (!m_list) return;
+    const QList<RowItem>& rs = rows();
+    m_list->blockSignals(true);
+    m_list->clear();
+    for (int i = 0; i < rs.size(); ++i) {
+        QListWidgetItem* it = new QListWidgetItem(m_list);
+        it->setData(Qt::UserRole, i);
+        it->setFlags(Qt::ItemIsEnabled);
+    }
+    applyCollapseToList();
+    m_list->blockSignals(false);
+}
+
+void TranscriptPanel::applyCollapseToList() {
+    if (!m_list) return;
+    const QList<RowItem>& rs = rows();
+    for (int i = 0; i < rs.size(); ++i) {
+        const RowItem& r = rs[i];
+        QListWidgetItem* it = m_list->item(i);
+        if (!it) continue;
+        if (r.type == RowType::Paragraph) {
+            bool visible = true;
+            for (const RowItem& h : rs) {
+                if (h.type == RowType::ChapterHeader && h.chapterIndex == r.chapterIndex) {
+                    visible = !h.collapsed;
+                    break;
+                }
+            }
+            it->setHidden(!visible);
         } else {
-            return -1;
+            it->setHidden(false);
         }
     }
-    if (m_currentPosMs < s) return 0;
-    if (m_currentPosMs >= e) return 2;
-    return 1;
 }
 
 // =============================================================
-// 交互
-// 单击章节头：折叠/展开（不做任何 seek）
-// 双击章节头：seek 到章节开始
-// 单击/双击段落：seek 到该句开始
+// seek 路径
 // =============================================================
-
-// 在指定 row 上执行 seek（章节头→章节开始；段落→鼠标位置对应句子）
 void TranscriptPanel::seekFromRow(int row, const QPoint& viewportPos) {
-    if (row < 0 || row >= m_rows.size()) return;
-    const RowItem& r = m_rows[row];
+    if (!m_vm) return;
+    const QList<RowItem>& rs = m_vm->rows();
+    if (row < 0 || row >= rs.size()) return;
+    const RowItem& r = rs[row];
     if (r.type == RowType::ChapterHeader) {
-        qint64 target = r.startMs;
-        if (target < 0) target = 0;
-        emit seekTo(target);
+        m_vm->requestSeekToChapter(r.chapterIndex);
         return;
     }
-    // 段落：用鼠标坐标定位到子句
     int subIdx = subtitleAtViewportPos(viewportPos);
-    if (subIdx < 0) {
-        subIdx = r.firstSubtitleIndex;
-    }
-    if (subIdx >= 0 && subIdx < m_subtitles.size()) {
-        qint64 target = qint64(std::llround(m_subtitles[subIdx].start_sec * 1000.0));
-        emit seekTo(target);
-    }
+    if (subIdx < 0) subIdx = r.firstSubtitleIndex;
+    if (subIdx >= 0) m_vm->requestSeekToSubtitle(subIdx);
 }
 
-// 暴露给代理：editorEvent 中收到双击时调用
 void TranscriptPanel::seekFromRowAt(int row, const QPoint& viewportPos) {
     QPoint vp = viewportPos;
     if (vp.isNull() && m_list) {
@@ -1137,108 +938,22 @@ void TranscriptPanel::onItemDoubleClicked(QListWidgetItem* item) {
 }
 
 bool TranscriptPanel::handleHeaderClick(int rowInList, const QPoint& localPos, const QRect& itemRect) {
-    if (rowInList < 0 || rowInList >= m_rows.size()) return false;
-    const RowItem& r = m_rows[rowInList];
-    if (r.type != RowType::ChapterHeader) {
-        return false;
-    }
     Q_UNUSED(localPos);
     Q_UNUSED(itemRect);
-    // 章节头单击：只切换折叠 / 展开，不 seek（seek 改为双击）
-    m_rows[rowInList].collapsed = !m_rows[rowInList].collapsed;
-    applyCollapseToList();
+    if (!m_vm) return false;
+    const QList<RowItem>& rs = m_vm->rows();
+    if (rowInList < 0 || rowInList >= rs.size()) return false;
+    const RowItem& r = rs[rowInList];
+    if (r.type != RowType::ChapterHeader) return false;
+    m_vm->toggleChapterCollapsed(r.chapterIndex);
     return true;
 }
 
-void TranscriptPanel::onCollapseFinishedClicked() {
-    bool any = false;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type != RowType::ChapterHeader) continue;
-        if (getBlockState(m_rows[i].chapterIndex) == 2) {
-            m_rows[i].collapsed = true;
-            any = true;
-        }
-    }
-    if (any) applyCollapseToList();
-}
-
-void TranscriptPanel::onExpandAllClicked() {
-    bool any = false;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type == RowType::ChapterHeader && m_rows[i].collapsed) {
-            m_rows[i].collapsed = false;
-            any = true;
-        }
-    }
-    if (any) applyCollapseToList();
-}
-
-void TranscriptPanel::onCollapseAllClicked() {
-    bool any = false;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        if (m_rows[i].type == RowType::ChapterHeader && !m_rows[i].collapsed) {
-            m_rows[i].collapsed = true;
-            any = true;
-        }
-    }
-    if (any) applyCollapseToList();
-}
-
-void TranscriptPanel::onSearchTextChanged(const QString& kw) {
-    m_searchKeyword = kw;
-    m_searchHitRows.clear();
-    if (kw.isEmpty()) {
-        if (m_list) m_list->viewport()->update();
-        return;
-    }
-    // 命中改为"按 subIdx 记录"——段落里只要某个 sub 命中，整段都要参与高亮
-    QSet<int> hitSubIdxs;
-    for (int si = 0; si < m_subtitles.size(); ++si) {
-        if (QString::fromStdString(m_subtitles[si].text).contains(kw, Qt::CaseInsensitive)) {
-            hitSubIdxs.insert(si);
-        }
-    }
-    // 找到第一个含命中的 row（用于滚动）
-    int firstRow = -1;
-    for (int i = 0; i < m_rows.size(); ++i) {
-        const RowItem& r = m_rows[i];
-        if (r.type != RowType::Paragraph) continue;
-        bool hit = false;
-        for (int si : r.subtitleIndices) if (hitSubIdxs.contains(si)) { hit = true; break; }
-        if (hit) {
-            m_searchHitRows.insert(r.firstSubtitleIndex);
-            if (firstRow < 0) firstRow = i;
-        }
-    }
-    if (m_list) {
-        m_list->viewport()->update();
-        if (firstRow >= 0) {
-            m_list->scrollToItem(m_list->item(firstRow), QAbstractItemView::PositionAtCenter);
-        }
-    }
-}
-
-void TranscriptPanel::onWordLevelToggled(bool on) {
-    m_wordLevelEnabled = on;
-    if (m_list) m_list->viewport()->update();
-}
-
-void TranscriptPanel::onScrollChanged() {
-    if (!m_autoScroll) return;
-    m_autoScroll = false;
-    m_autoScrollResumeTimer->start();
-}
-
-void TranscriptPanel::onAutoScrollResume() {
-    m_autoScroll = true;
-    if (m_activeSubtitleIdx >= 0) {
-        scrollToActiveRow();
-    }
-}
-
 void TranscriptPanel::scrollToActiveRow() {
-    if (!m_list || m_activeSubtitleIdx < 0) return;
-    int rowIdx = findRowIndexBySubtitle(m_activeSubtitleIdx);
+    if (!m_list || !m_vm) return;
+    int sub = m_vm->activeSubtitleIdx();
+    if (sub < 0) return;
+    int rowIdx = m_vm->findRowIndexBySubtitle(sub);
     if (rowIdx < 0) return;
     QListWidgetItem* it = m_list->item(rowIdx);
     if (!it || it->isHidden()) return;
@@ -1246,162 +961,13 @@ void TranscriptPanel::scrollToActiveRow() {
 }
 
 // =============================================================
-// 暴露给 ItemDelegate
-// =============================================================
-bool TranscriptPanel::isSearchHit(int subtitleIndex) const {
-    return m_searchHitRows.contains(subtitleIndex);
-}
-
-int TranscriptPanel::activeWordInLine(int subtitleIndex, qint64 posMs) const {
-    auto it = m_lineCache.constFind(subtitleIndex);
-    if (it == m_lineCache.constEnd()) return -1;
-    const SubtitleLineCache* cache = it.value();
-    if (!cache) return -1;
-    const QList<WordSegment>& words = cache->words;
-    if (words.isEmpty()) return -1;
-
-    double posSec = posMs / 1000.0;
-    int lo = 0, hi = words.size() - 1, ans = -1;
-    while (lo <= hi) {
-        int mid = (lo + hi) / 2;
-        if (words[mid].startSec <= posSec) { ans = mid; lo = mid + 1; }
-        else { hi = mid - 1; }
-    }
-    if (ans < 0) return -1;
-    if (posSec < words[ans].endSec) return ans;
-    if (ans + 1 < words.size()) return ans + 1;
-    return words.size() - 1;
-}
-
-// =============================================================
-// 智能分词 + 字级线性插值（保留：K 歌需要）
-// =============================================================
-void TranscriptPanel::ensureLineCache(int subtitleIndex) {
-    if (subtitleIndex < 0 || subtitleIndex >= m_subtitles.size()) return;
-    if (m_lineCache.contains(subtitleIndex)) return;
-    SubtitleLineCache* cache = new SubtitleLineCache(buildLineCache(subtitleIndex));
-    m_lineCache.insert(subtitleIndex, cache);
-}
-
-SubtitleLineCache TranscriptPanel::buildLineCache(int subtitleIndex) const {
-    SubtitleLineCache cache;
-    if (subtitleIndex < 0 || subtitleIndex >= m_subtitles.size()) return cache;
-    const auto& sub = m_subtitles[subtitleIndex];
-    cache.subtitleIndex = subtitleIndex;
-    cache.text = QString::fromStdString(sub.text).simplified();
-    if (cache.text.isEmpty()) return cache;
-
-    QList<QPair<int,int>> tokens = tokenize(cache.text);
-    if (tokens.isEmpty()) return cache;
-
-    QList<double> weights;
-    double totalWeight = 0;
-    for (const auto& tok : tokens) {
-        QString s = cache.text.mid(tok.first, tok.second - tok.first);
-        double w = computeTokenWeight(s);
-        if (w <= 0) w = 0.0001;
-        weights.append(w);
-        totalWeight += w;
-    }
-
-    double duration = sub.end_sec - sub.start_sec;
-    if (duration <= 0) duration = 0.001;
-    double cursor = sub.start_sec;
-    for (int i = 0; i < tokens.size(); ++i) {
-        double dt = (weights[i] / totalWeight) * duration;
-        WordSegment ws;
-        ws.startUtf16 = tokens[i].first;
-        ws.endUtf16   = tokens[i].second;
-        ws.startSec   = cursor;
-        ws.endSec     = cursor + dt;
-        cache.words.append(ws);
-        cursor = ws.endSec;
-    }
-    return cache;
-}
-
-bool TranscriptPanel::isPunctuation(QChar c) {
-    ushort u = c.unicode();
-    if (u == 0xFF0C || u == 0x3002 || u == 0xFF01 || u == 0xFF1F ||
-        u == 0xFF1A || u == 0xFF1B || u == 0x3001 || u == 0x3003 ||
-        u == 0x201C || u == 0x201D || u == 0x2018 || u == 0x2019 ||
-        u == 0xFF08 || u == 0xFF09 || u == 0x3010 || u == 0x3011 ||
-        u == 0x2026 || u == 0x00B7) {
-        return true;
-    }
-    if (u < 128) {
-        return !(c.isLetterOrNumber()) && !c.isSpace();
-    }
-    if ((u >= 0x3000 && u <= 0x303F) ||
-        (u >= 0xFF00 && u <= 0xFFEF) ||
-        (u >= 0x2000 && u <= 0x206F)) {
-        return true;
-    }
-    return false;
-}
-
-QList<QPair<int,int>> TranscriptPanel::tokenize(const QString& text) {
-    QList<QPair<int,int>> tokens;
-    int n = text.size();
-    int i = 0;
-    while (i < n) {
-        QChar c = text[i];
-        if (c.isSpace()) { ++i; continue; }
-        if (isPunctuation(c)) {
-            tokens.append({i, i + 1});
-            ++i; continue;
-        }
-        ushort u = c.unicode();
-        if (u >= 0x4E00 && u <= 0x9FFF) {
-            tokens.append({i, i + 1});
-            ++i; continue;
-        }
-        if ((u >= 0x3400 && u <= 0x4DBF) ||
-            (u >= 0x20000 && u <= 0x2A6DF) ||
-            (u >= 0x2A700 && u <= 0x2B73F) ||
-            (u >= 0x2B740 && u <= 0x2B81F) ||
-            (u >= 0x2B820 && u <= 0x2CEAF)) {
-            tokens.append({i, i + 1});
-            ++i; continue;
-        }
-        if (c.isLetterOrNumber() && u < 128) {
-            int j = i;
-            while (j < n) {
-                QChar cj = text[j];
-                ushort uj = cj.unicode();
-                if (cj.isLetterOrNumber() && uj < 128) ++j;
-                else break;
-            }
-            if (j > i) {
-                tokens.append({i, j});
-                i = j;
-                continue;
-            }
-        }
-        tokens.append({i, i + 1});
-        ++i;
-    }
-    return tokens;
-}
-
-double TranscriptPanel::computeTokenWeight(const QString& token) {
-    if (token.isEmpty()) return 0.0;
-    if (isPunctuation(token.at(0))) return 0.1;
-    ushort u = token.at(0).unicode();
-    if (token.size() == 1 && u >= 0x4E00 && u <= 0x9FFF) return 1.0;
-    if (token.at(0).isLetterOrNumber()) return double(token.size()) * 1.2;
-    return 1.0;
-}
-
-// =============================================================
 // viewport eventFilter：mouse move / tooltip
 // =============================================================
 bool TranscriptPanel::eventFilter(QObject* watched, QEvent* event) {
-    if (watched == m_list->viewport()) {
+    if (m_list && watched == m_list->viewport()) {
         static int s_lastTooltipSub = -2;
         if (event->type() == QEvent::MouseMove) {
             QMouseEvent* me = static_cast<QMouseEvent*>(event);
-            // 严格过滤：只有鼠标真正在某个 item 上时，才看 hitRect
             QListWidgetItem* atItem = m_list->itemAt(me->pos());
             int newHover = atItem ? subtitleAtViewportPos(me->pos()) : -1;
             if (newHover != m_hoverSubtitleIdx) {
@@ -1426,8 +992,6 @@ bool TranscriptPanel::eventFilter(QObject* watched, QEvent* event) {
                     QToolTip::hideText();
                 }
             } else if (newHover < 0) {
-                // 稳定在空白区：保证不残留旧 tooltip（Windows 上 hideText 是非阻塞的，
-                // 反复 move 时显式 hide 一次能让 Qt 内部 tooltip widget 立即消失）
                 QToolTip::hideText();
             }
             return false;
@@ -1448,8 +1012,6 @@ bool TranscriptPanel::eventFilter(QObject* watched, QEvent* event) {
             return false;
         }
         if (event->type() == QEvent::Resize) {
-            // viewport 第一次有真实宽度时（首次 show / 父布局生效），重算所有 sizeHint
-            // 否则 sizeHint 在 listWidth()==0 时会拿兜底值，段落被错算为几十行高
             static int s_lastW = -1;
             int curW = m_list->viewport()->width();
             if (curW > 0 && curW != s_lastW) {

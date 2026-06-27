@@ -156,10 +156,6 @@ MainWindow::MainWindow(QWidget *parent)
     ui->speedLabel->setVisible(false);
     ui->infoLabel->hide();
 
-    // 全屏下 controlBarContainer 是 videoWidget 的子,
-    // videoWidget 已在第 36 行装了 eventFilter,Resize 事件
-    // 会触发 updateControlBarGeometry,这里不重复装。
-
     setupRightPanel();
 
     connect(&timer,&QTimer::timeout,this,&MainWindow::onLongPressTimeout);   //右方向键长按倍速播放
@@ -223,16 +219,13 @@ MainWindow::~MainWindow()
     player_->stop();
     preview_player_->stop();
     //释放资源
-    delete ui;
-    delete player_;
+    // player_ 的 parent 是 this，随 QObject 树自动析构，不需手动 delete
+    // preview_ 的 parent 是 previewContainer_，随 ui 析构自动释放，不需手动 delete
     delete preview_player_;
-    delete picture_;
-    delete preview_;
-
-    player_ = nullptr;
     preview_player_ = nullptr;
-    preview_ = nullptr;
+    delete picture_;
     picture_ = nullptr;
+    delete ui;
 }
 
 void MainWindow::onPlayerStateChanged()
@@ -336,10 +329,9 @@ void MainWindow::onPlayerOpenResult(bool result)
         if (m_transcriptPanel) {
             m_transcriptPanel->setVideoPath(player_->fileUrl());
         }
-        if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
-            && m_summaryManager->state() != SummaryState::Finished
-            && m_summaryManager->state() != SummaryState::Error) {
-            m_summaryManager->stopSummary();
+        if (m_summaryVm) {
+            // VM 内部会判断状态并 stop（如有必要），无需 MainWindow 重复判断
+            m_summaryVm->setVideoPath(player_->fileUrl());
         }
         // mp3渲染专辑封面
         if (!player_->hasVideo()) {
@@ -422,7 +414,7 @@ void MainWindow::on_openFileBtn_clicked()
                                                     "选择多媒体文件",
                                                     "/home",
                                                     "多媒体文件(*.mp4 *.avi *.mkv *.mp3 *.aac *.mov *.ts)");
-    if(filePath == nullptr) return;
+    if(filePath.isEmpty()) return;
     addToFileList(filePath);
     scheduleSave();
     play(filePath);
@@ -582,7 +574,7 @@ void MainWindow::on_addFileBtn_clicked()
                                                     "/home", //初始路径
                                                     "多媒体文件 (*.mp4 *.avi *.mkv *.mp3 *.aac *.mov *.ts)"
                                                     );
-    if(filePath==nullptr) return;//没有成功打开文件
+    if(filePath.isEmpty()) return;//没有成功打开文件
 
     bool wasEmpty = playlist_->isEmpty();
     addToFileList(filePath);
@@ -783,10 +775,12 @@ void MainWindow::keyReleaseEvent(QKeyEvent* event){
 
 void MainWindow::contextMenuEvent(QContextMenuEvent *pEvent)
 {
+    // 先清空旧 action，parent 设为 popMenu，clear() 时自动 delete
+    popMenu->clear();
 
-    QAction *fileInfoAction = new QAction("  视频信息",this);
-    QAction *keyInfoAction = new QAction("  快捷键说明",this);
-    QAction *playerInfoAction = new QAction("  v1.0.0",this);
+    QAction *fileInfoAction = new QAction("  视频信息", popMenu);
+    QAction *keyInfoAction = new QAction("  快捷键说明", popMenu);
+    QAction *playerInfoAction = new QAction("  v1.0.0", popMenu);
 
     connect(keyInfoAction, &QAction::triggered, this, [this]() {
         ShotCutDialog *shotcutdialog = new ShotCutDialog(this);
@@ -794,21 +788,17 @@ void MainWindow::contextMenuEvent(QContextMenuEvent *pEvent)
         shotcutdialog->show();
     });
 
-
-    connect(fileInfoAction,&QAction::triggered,this,[this](){
+    connect(fileInfoAction, &QAction::triggered, this, [this](){
         VideoInfoDialog *videoinfodialog = new VideoInfoDialog(this);
         videoinfodialog->setAttribute(Qt::WA_DeleteOnClose);
         if(player_->state() != PlayerViewModel::Stopped){
-            videoinfodialog->updateinformation(player_->avFormatContext(),player_->fileUrl().toStdString().c_str());
+            videoinfodialog->updateinformation(player_->mediaInfo());
             videoinfodialog->show();
         }else{
-            QMessageBox::information(NULL,"暂无播放视频","打开一个视频才有信息哦！",QMessageBox::Yes);
+            QMessageBox::information(nullptr, "暂无播放视频", "打开一个视频才有信息哦！", QMessageBox::Yes);
         }
-
     });
 
-
-    popMenu->clear();
     popMenu->setStyleSheet(R"(
     QMenu {
         min-width:130px;
@@ -853,23 +843,6 @@ void MainWindow::restoreControlBarParent()
 }
 
 
-void MainWindow::updateControlBarGeometry()
-{
-    // 全屏时 controlBarContainer 的 parent 是 videoWidget (见 enterFullScreenMode),
-    // 它不再受 centralwidget 的 gridLayout 管理 —— 必须主动跟随 videoWidget 宽度。
-    if (!isFullScreenMode) return;
-
-    // controlBar 的 parent 是 videoWidget,geometry 用的是 videoWidget 局部坐标。
-    // 视频可视区底边 = videoWidget.height()(视频填满 videoWidget 整个客户区),
-    // 控制栏贴在底边: y = videoHeight - barH, width = videoWidth。
-    const int barH = ui->controlBarContainer->height();
-    const int vidW = ui->videoWidget->width();
-    const int vidH = ui->videoWidget->height();
-    if (vidW <= 0 || vidH <= 0 || barH <= 0) return;
-    ui->controlBarContainer->setGeometry(0, vidH - barH, vidW, barH);
-    ui->controlBarContainer->raise();
-}
-
 void MainWindow::enterFullScreenMode()
 {
     this->showFullScreen();
@@ -877,12 +850,18 @@ void MainWindow::enterFullScreenMode()
 
     isFullScreenMode = true;
 
-    ui->controlBarContainer->setParent(ui->videoWidget);
+    // 不再 setParent 到 videoWidget(QOpenGLWidget)，避免 Popup/ComboBox 被 OpenGL 表面遮挡
+    // 改为从布局中取出，保持 centralwidget 为父控件，通过绝对定位悬浮在视频上方
+    if (ui->centralwidget->layout()) {
+        ui->centralwidget->layout()->removeWidget(ui->controlBarContainer);
+    }
+    ui->controlBarContainer->setParent(ui->centralwidget);
     ui->controlBarContainer->raise();
+    ui->controlBarContainer->show();
 
-    // reparent 后控制栏几何被清零,且此时 videoWidget 还没触发 resize,
-    // 显式延后一次保证控制栏贴到视频底边
-    QTimer::singleShot(0, this, &MainWindow::updateControlBarGeometry);
+    QTimer::singleShot(0, this, [=]() {
+        repositionControlBarFullScreen();
+    });
 
     // 全屏透明样式
     ui->controlBarContainer->setStyleSheet(R"(
@@ -903,12 +882,6 @@ void MainWindow::exitFullScreenMode()
 
     restoreControlBarParent();
     ui->controlBarContainer->setStyleSheet(originalControlBarStyle);
-
-    // 重新放回布局后,强制布局立即重算,避免控制栏保留全屏期的宽度
-    if (ui->centralwidget->layout()) {
-        ui->centralwidget->layout()->invalidate();
-    }
-    ui->centralwidget->layout()->activate();
 
     showControlBarAndCursor();
 }
@@ -940,7 +913,6 @@ void MainWindow::openFileList()
 
     ui->openListBtn->setIcon(QIcon(":/SmartPlayer-icon/right_arrow.png"));
     centerLoadingLabel();
-    // 控制栏跟随由 videoWidget eventFilter 统一处理
 }
 
 void MainWindow::closeFileList()
@@ -953,7 +925,6 @@ void MainWindow::closeFileList()
     ui->videoWidget->resize(ui->playerPage->width(),ui->playerPage->height());
     ui->openListBtn->setIcon(QIcon(":/SmartPlayer-icon/left_arrow.png"));
     centerLoadingLabel();
-    // 控制栏跟随由 videoWidget eventFilter 统一处理
 }
 
 void MainWindow::openVideoFromCommand(const QString &filePath)
@@ -988,10 +959,8 @@ void MainWindow::play(QString filePath)
     if (m_summaryPanel) {
         m_summaryPanel->setVideoPath(filePath);
     }
-    if (m_summaryManager && m_summaryManager->state() != SummaryState::Idle
-        && m_summaryManager->state() != SummaryState::Finished
-        && m_summaryManager->state() != SummaryState::Error) {
-        m_summaryManager->stopSummary();
+    if (m_summaryVm) {
+        m_summaryVm->setVideoPath(filePath);
     }
     player_->open(filePath);
 }
@@ -1088,7 +1057,7 @@ void MainWindow::on_rtspButton_clicked()
 
     if (dialog.exec() == QDialog::Accepted) {
         QString rtsp_url = dialog.textValue();
-        if(rtsp_url == nullptr) return;
+        if(rtsp_url.isEmpty()) return;
         addToFileList(rtsp_url);
         play(rtsp_url);
     }
@@ -1137,7 +1106,7 @@ void MainWindow::on_change_userDecoder(QString decoder)
     PlayerViewModel::State state = player_->state();
     if(state == PlayerViewModel::Stopped){
         if(decoder == "默认(推荐)"){
-            player_->setDecodeType(NULL);
+            player_->setDecodeType(QString());
         }else{
             player_->setDecodeType(decoder);
         }
@@ -1147,7 +1116,7 @@ void MainWindow::on_change_userDecoder(QString decoder)
         preview_player_->stop();
 
         if(decoder == "默认(推荐)"){
-            player_->setDecodeType(NULL);
+            player_->setDecodeType(QString());
         }else{
             player_->setDecodeType(decoder);
         }
@@ -1425,13 +1394,6 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         return QMainWindow::eventFilter(obj, event);
     }
 
-    // 全屏下 controlBarContainer 是 videoWidget 的子,任何导致
-    // videoWidget 尺寸变化(fileList/AI 面板开关、窗口 resize)都需
-    // 同步控制栏几何。
-    if (obj == ui->videoWidget && event->type() == QEvent::Resize) {
-        updateControlBarGeometry();
-    }
-
     if (obj == ui->controlBarContainer) {
 
         if (event->type() == QEvent::Enter) {
@@ -1458,6 +1420,21 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     centerLoadingLabel();
+
+    // 全屏时需要重新定位控制栏（窗口大小变化时同步）
+    if (isFullScreenMode) {
+        repositionControlBarFullScreen();
+    }
+}
+
+void MainWindow::repositionControlBarFullScreen()
+{
+    // 将 controlBarContainer 绝对定位到 centralwidget 的底部（覆盖在 videoWidget 上方）
+    int barH = ui->controlBarContainer->height();
+    int parentW = ui->centralwidget->width();
+    int parentH = ui->centralwidget->height();
+    ui->controlBarContainer->setGeometry(0, parentH - barH, parentW, barH);
+    ui->controlBarContainer->raise();
 }
 
 // void MainWindow::on_progressSlider_sliderMoved(int position)
@@ -1506,9 +1483,14 @@ void MainWindow::on_subtitleBtn_clicked()
 }
 
 void MainWindow::setupRightPanel() {
-    m_summaryManager  = new VideoSummaryManager();
+    // MVVM 阶段 3a：用 SummaryViewModel 替换原始的 VideoSummaryManager。
+    // VM 内部拥有 manager，Panel 通过 VM 与之交互，MainWindow 不再持有原始 Model。
+    m_summaryVm       = new SummaryViewModel(this);
+    // MVVM 阶段 3b：TranscriptPanel 业务数据迁移到 TranscriptViewModel
+    m_transcriptVm    = new TranscriptViewModel(this);
     m_summaryPanel    = new SummaryPanel(this);
     m_transcriptPanel = new TranscriptPanel(this);
+    m_transcriptPanel->bindViewModel(m_transcriptVm);
 
     // 用 SlidingTabWidget 把"AI 视频总结"和"视频文稿"装到 mainwindow 右侧边缘，
     // 两个 tab 按钮等宽平分整个面板宽度，切换时有"胶囊背景色块"在按钮之间滑动的动画。
@@ -1531,8 +1513,8 @@ void MainWindow::setupRightPanel() {
     addDockWidget(Qt::RightDockWidgetArea, m_rightDock);
     m_rightDock->hide();
 
-    // SummaryPanel 数据绑定
-    m_summaryPanel->bindManager(m_summaryManager);
+    // SummaryPanel 数据绑定（通过 ViewModel）
+    m_summaryPanel->bindViewModel(m_summaryVm);
     connect(m_summaryPanel, &SummaryPanel::seekTo, this, [this](qint64 ms) {
         player_->seek(ms);
     });
@@ -1552,9 +1534,19 @@ void MainWindow::setupRightPanel() {
     connect(player_, &PlayerViewModel::initFinished, this, [this]() {
         m_transcriptPanel->setDuration(player_->duration());
     });
-    connect(m_summaryManager, &VideoSummaryManager::asrCompleted,
+
+    // MVVM 阶段 3a：SummaryViewModel ↔ TranscriptPanel 的数据流由 MainWindow 协调
+    //   - ASR 完成 → 文稿面板获得字幕（流式）
+    //   - 结构化 Report → 章节 / 段落 / 字幕 一并喂给文稿面板
+    connect(m_summaryVm, &SummaryViewModel::asrCompleted,
             m_transcriptPanel, &TranscriptPanel::setSubtitleItems);
-    m_summaryPanel->setTranscriptPanel(m_transcriptPanel);
+    connect(m_summaryVm, &SummaryViewModel::reportChanged, this, [this]() {
+        if (!m_summaryVm->hasReport() || !m_transcriptPanel) return;
+        const SummaryReport& r = m_summaryVm->report();
+        m_transcriptPanel->setChapters(r.chapters);
+        m_transcriptPanel->setSegments(r.segments);
+        m_transcriptPanel->setSubtitleItems(r.asrResults);
+    });
 
     // 不再使用 menubar——面板切换由 tab 直接承担
     if (QMenuBar* mb = menuBar()) {
@@ -1566,5 +1558,4 @@ void MainWindow::on_aiSummaryBtn_clicked()
 {
     if (!m_rightDock) return;
     m_rightDock->setVisible(!m_rightDock->isVisible());
-    // 控制栏跟随由 videoWidget eventFilter 统一处理
 }

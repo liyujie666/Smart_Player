@@ -1,5 +1,11 @@
 #include "playerviewmodel.h"
 #include <QDebug>
+#include <QFileInfo>
+
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavutil/pixdesc.h>
+}
 
 PlayerViewModel::PlayerViewModel(QObject* parent)
     : IViewModel(parent)
@@ -31,10 +37,6 @@ bool PlayerViewModel::isAsrEnabled() const { return m_core ? m_core->isAsrEnable
 bool PlayerViewModel::hasAudio() const     { return m_core ? m_core->hasAudio() : false; }
 bool PlayerViewModel::hasVideo() const     { return m_core ? m_core->hasVideo() : false; }
 QString PlayerViewModel::fileUrl() const   { return m_core ? m_core->fileUrl() : QString(); }
-
-AVFormatContext* PlayerViewModel::avFormatContext() const {
-    return m_core ? m_core->avFormatContext() : nullptr;
-}
 
 Demuxer::MediaType PlayerViewModel::mediaType() const {
     return m_core ? m_core->mediaType() : Demuxer::MediaType::FILE_TYPE;
@@ -159,6 +161,47 @@ void PlayerViewModel::onCoreInitFinished() {
         m_duration = d;
         emit durationChanged(d);
     }
+
+    // 从 AVFormatContext 一次性提炼出 MediaInfo DTO，之后 View 都用 DTO，
+    // 不再通过 VM 拿原生指针（playerviewmodel::avFormatContext 已删除）。
+    m_mediaInfo = MediaInfo{};
+    AVFormatContext* fmt = m_core->avFormatContext();
+    if (fmt) {
+        m_mediaInfo.filePath = m_core->fileUrl();
+        QFileInfo fi(m_mediaInfo.filePath);
+        m_mediaInfo.fileName = fi.fileName();
+        if (fmt->iformat && fmt->iformat->name) {
+            m_mediaInfo.formatName = QString::fromLatin1(fmt->iformat->name);
+        }
+        int64_t dur_us = fmt->duration;
+        if (dur_us != AV_NOPTS_VALUE && dur_us > 0) {
+            m_mediaInfo.durationMs = dur_us / 1000;
+        }
+        int64_t br = fmt->bit_rate;
+        if (br > 0 && br != AV_NOPTS_VALUE) m_mediaInfo.bitRate = br;
+
+        int videoIndex = -1, audioIndex = -1;
+        for (unsigned i = 0; i < fmt->nb_streams; ++i) {
+            AVMediaType t = fmt->streams[i]->codecpar->codec_type;
+            if (t == AVMEDIA_TYPE_VIDEO && videoIndex < 0) videoIndex = int(i);
+            else if (t == AVMEDIA_TYPE_AUDIO && audioIndex < 0) audioIndex = int(i);
+        }
+        if (videoIndex >= 0) {
+            m_mediaInfo.hasVideo = true;
+            AVPixelFormat pix = (AVPixelFormat)fmt->streams[videoIndex]->codecpar->format;
+            if (const char* nm = av_get_pix_fmt_name(pix)) {
+                m_mediaInfo.videoPixelFormat = QString::fromLatin1(nm);
+            }
+            AVRational fr = fmt->streams[videoIndex]->codecpar->framerate;
+            if (fr.den > 0) m_mediaInfo.videoFrameRate = double(fr.num) / double(fr.den);
+        }
+        if (audioIndex >= 0) {
+            m_mediaInfo.hasAudio = true;
+            m_mediaInfo.audioChannels   = fmt->streams[audioIndex]->codecpar->ch_layout.nb_channels;
+            m_mediaInfo.audioSampleRate = fmt->streams[audioIndex]->codecpar->sample_rate;
+        }
+    }
+
     emit mediaInfoChanged();
     emit initFinished();
 }

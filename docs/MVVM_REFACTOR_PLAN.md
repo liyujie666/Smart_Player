@@ -24,7 +24,7 @@
                    │  vm->command()
                    ▼
 ┌───────────────────────────────────────────────────────────────┐
-│                       ViewModel 层 (src/viewmodel/)              │
+│                       ViewModel 层 (viewmodel/)                │
 │  PlayerViewModel      ✅  PlaylistViewModel    ✅              │
 │  SummaryViewModel     ⏳  TranscriptViewModel  ⏳              │
 │  SettingsViewModel    ⏳  AppShellViewModel    ⏳ (可选)        │
@@ -34,17 +34,17 @@
                    ▼
 ┌───────────────────────────────────────────────────────────────┐
 │                          Model 层                              │
-│  src/core/PlayerCore   src/summary/VideoSummaryManager                 │
-│  src/subtitle/AsrManager   translator/SubtitleTranslator           │
-│  src/demuxer/decoder/render/queue/...  src/app/ConfigManager           │
+│  core/PlayerCore   summary/VideoSummaryManager                 │
+│  subtitle/AsrManager   translator/SubtitleTranslator           │
+│  demuxer/decoder/render/queue/...  app/ConfigManager           │
 │  ─ 纯业务、纯数据、无 UI 依赖                                   │
 └───────────────────────────────────────────────────────────────┘
 ```
 
 ### 不变量（所有 AI 后续修改必须遵守）
 
-1. **src/viewmodel/ 目录禁止 `#include` 任何 `ui_xxx.h` 与 `QWidget` 派生类的私有头**。
-2. **Model（src/core/ src/summary/ src/subtitle/ translator/ src/demuxer/ ...）禁止 `#include` 任何 `src/viewmodel/` 或 View 头**。
+1. **viewmodel/ 目录禁止 `#include` 任何 `ui_xxx.h` 与 `QWidget` 派生类的私有头**。
+2. **Model（core/ summary/ subtitle/ translator/ demuxer/ ...）禁止 `#include` 任何 `viewmodel/` 或 View 头**。
 3. **View 禁止直接调用 Model 方法**（PlayerCore::play、VideoSummaryManager::startSummary 等），必须通过 VM。例外：`PlayerViewModel::core()` / `avFormatContext()` 等少量"逃生口"，新代码禁止使用。
 4. **每个 VM 字段必须有 `Q_PROPERTY` 或显式 signal 通知**。无 NOTIFY 的状态变更视为 bug。
 5. **持久化**：VM 不直接读写文件系统；通过 `ConfigManager` 进行（`SettingsViewModel` 阶段后 ConfigManager 退化为存储底层，由 SettingsViewModel 包装）。
@@ -56,8 +56,8 @@
 
 ### ✅ 阶段 1：PlayerViewModel
 
-- **新增文件**：`src/viewmodel/iviewmodel.h`、`src/viewmodel/playerviewmodel.{h,cpp}`、`src/viewmodel/README.md`
-- **改动文件**：`src/app/mainwindow.{h,cpp}`、`Smart_Player.pro`
+- **新增文件**：`viewmodel/iviewmodel.h`、`viewmodel/playerviewmodel.{h,cpp}`、`viewmodel/README.md`
+- **改动文件**：`app/mainwindow.{h,cpp}`、`Smart_Player.pro`
 - **核心做法**：
   - `PlayerCore` 被 VM 拥有；VM 通过 Q_PROPERTY 暴露 `state / position / duration / volume / mute / speedIndex / asrEnabled / hasAudio / hasVideo / fileUrl / currentSubtitle`。
   - VM 信号刻意与 PlayerCore 同名同签名，便于 View 平滑迁移。
@@ -65,8 +65,8 @@
 
 ### ✅ 阶段 2：PlaylistViewModel
 
-- **新增文件**：`src/viewmodel/playlistviewmodel.{h,cpp}`
-- **改动文件**：`src/app/mainwindow.{h,cpp}`
+- **新增文件**：`viewmodel/playlistviewmodel.{h,cpp}`
+- **改动文件**：`app/mainwindow.{h,cpp}`
 - **核心做法**：
   - 数据 `tracks / currentIndex / playMode` 全部迁出 MainWindow。
   - `currentTrackRequested(path)` 信号承担"用户意图：播放某条"，View 接到后调 `play(path)`。VM 与 PlayerViewModel **不直接交互**。
@@ -84,13 +84,13 @@
 - `VideoSummaryManager` 一行不动（它已经是高质量 Model）。
 
 #### 新增文件
-1. `src/viewmodel/summaryviewmodel.h`
-2. `src/viewmodel/summaryviewmodel.cpp`
+1. `viewmodel/summaryviewmodel.h`
+2. `viewmodel/summaryviewmodel.cpp`
 
 #### SummaryViewModel 设计骨架
 
 ```cpp
-// src/viewmodel/summaryviewmodel.h
+// viewmodel/summaryviewmodel.h
 class SummaryViewModel : public IViewModel {
     Q_OBJECT
     Q_PROPERTY(SummaryState state                  READ state                NOTIFY stateChanged)
@@ -196,8 +196,8 @@ m_summaryPanel->bindViewModel(m_summaryVm);   // 见阶段 3b
 - `TranscriptViewModel` 负责：`m_rows / m_subtitles / m_chapters / m_segments / m_lineCache / 高亮当前段/句/字 / 搜索过滤 / 折叠状态 / 自动滚动状态机`。
 
 #### 新增文件
-1. `src/viewmodel/transcriptviewmodel.h`
-2. `src/viewmodel/transcriptviewmodel.cpp`
+1. `viewmodel/transcriptviewmodel.h`
+2. `viewmodel/transcriptviewmodel.cpp`
 
 #### 数据归属切分（按 TranscriptPanel 字段逐个分类）
 
@@ -392,8 +392,8 @@ connect(m_transcriptVm, &TranscriptViewModel::seekTo, this, [this](qint64 ms) {
 - `ConfigManager` 沦为单纯的"存储后端"。
 
 #### 新增文件
-1. `src/viewmodel/settingsviewmodel.h`
-2. `src/viewmodel/settingsviewmodel.cpp`
+1. `viewmodel/settingsviewmodel.h`
+2. `viewmodel/settingsviewmodel.cpp`
 
 #### SettingsViewModel 设计骨架
 
@@ -486,7 +486,7 @@ signals:
 每个新增 VM 都应包含：
 
 ```cpp
-// src/viewmodel/xxxviewmodel.h
+// viewmodel/xxxviewmodel.h
 #ifndef XXXVIEWMODEL_H
 #define XXXVIEWMODEL_H
 
@@ -549,12 +549,12 @@ private:
 
 | 阶段 | 状态 | 触发条件 | 输出 |
 |---|---|---|---|
-| 1. PlayerViewModel | ✅ 已完成 | - | src/viewmodel/{iviewmodel,playerviewmodel}.{h,cpp} |
-| 2. PlaylistViewModel | ✅ 已完成 | - | src/viewmodel/playlistviewmodel.{h,cpp} |
-| **3a. SummaryViewModel** | ⏳ 待执行 | 用户说"执行阶段 3a" | src/viewmodel/summaryviewmodel.{h,cpp} + SummaryPanel/MainWindow 改造 |
-| **3b. TranscriptViewModel** | ⏳ 待执行 | 用户说"执行阶段 3b" | src/viewmodel/transcriptviewmodel.{h,cpp} + TranscriptPanel/MainWindow 改造 |
-| **4. SettingsViewModel** | ⏳ 待执行 | 用户说"执行阶段 4" | src/viewmodel/settingsviewmodel.{h,cpp} + settingDialog/SummarySettingsDialog/MainWindow 改造 |
-| **5. MainWindow 瘦身 + 收尾** | ⏳ 待执行 | 用户说"执行阶段 5" | MainWindow < 500 行；删除 VM 逃生口 |
+| 1. PlayerViewModel | ✅ 已完成 | - | viewmodel/{iviewmodel,playerviewmodel}.{h,cpp} |
+| 2. PlaylistViewModel | ✅ 已完成 | - | viewmodel/playlistviewmodel.{h,cpp} |
+| **3a. SummaryViewModel** | ✅ 已完成 | - | viewmodel/summaryviewmodel.{h,cpp} + SummaryPanel/MainWindow 改造 |
+| **3b. TranscriptViewModel** | ✅ 已完成 | - | viewmodel/transcriptviewmodel.{h,cpp} + TranscriptPanel/MainWindow 改造 |
+| **4. SettingsViewModel** | ✅ 已完成 | - | viewmodel/settingsviewmodel.{h,cpp}（ConfigManager 包装层） |
+| **5. MainWindow 瘦身 + 收尾** | ✅ 已完成 | - | MediaInfo DTO + 删除 avFormatContext() 逃生口 |
 
 ### AI 执行规则
 
@@ -569,7 +569,7 @@ private:
 
 ## 5. 不在重构范围的事项（明确说不做）
 
-- 不重写底层 FFmpeg 解码栈（src/demuxer/decoder/converter/queue 等）。
+- 不重写底层 FFmpeg 解码栈（demuxer/decoder/converter/queue 等）。
 - 不引入 QML（保留 QWidget；MVVM 设计也是为未来 QML 留余地）。
 - 不引入第三方 MVVM 框架（KO / Vue 风格）；直接用 Qt 原生 Q_PROPERTY + signal/slot。
 - 不修改 `Resource.qrc / app_icon.rc / SmartPlayer-icon/`。
@@ -582,7 +582,7 @@ private:
 
 | 里程碑 | 完成标志 |
 |---|---|
-| M1 | `MainWindow` 不再 `#include "playercore.h"`，仅 include `src/viewmodel/playerviewmodel.h`（✅ 已达成） |
+| M1 | `MainWindow` 不再 `#include "playercore.h"`，仅 include `viewmodel/playerviewmodel.h`（✅ 已达成） |
 | M2 | `MainWindow` 不再持有 `fileList / listIndex / playMode_`（✅ 已达成） |
 | M3 | `SummaryPanel` 不再 `#include "videosummarymanager.h"` | 阶段 3a 完成 |
 | M4 | `TranscriptPanel.cpp` < 600 行 | 阶段 3b 完成 |
