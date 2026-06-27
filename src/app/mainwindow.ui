@@ -1,0 +1,1227 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1225</width>
+    <height>805</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>MainWindow</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true"/>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <property name="styleSheet">
+    <string notr="true">QWidget{
+	background:black;
+}</string>
+   </property>
+   <layout class="QGridLayout" name="gridLayout">
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item row="0" column="0">
+     <widget class="QWidget" name="playerPage" native="true">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="styleSheet">
+       <string notr="true"/>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_4">
+       <item>
+        <widget class="OpenGLRenderer" name="videoWidget">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <layout class="QGridLayout" name="gridLayout_2">
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item row="0" column="2">
+           <layout class="QHBoxLayout" name="horizontalLayout_5">
+            <item>
+             <spacer name="horizontalSpacer_4">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>278</width>
+                <height>28</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="openListBtn">
+              <property name="styleSheet">
+               <string notr="true">QPushButton{
+	background-color: rgba(0, 0, 0, 160);  /* 半透明黑 */
+	max-height:50px;
+	max-width:23px;
+	min-height:50px;
+	min-width:23px;
+	border:none;
+	border-radius: 5px;
+	margin-right:5px;
+}</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="../resources/Resource.qrc">
+                <normaloff>:/SmartPlayer-icon/right_arrow.png</normaloff>:/SmartPlayer-icon/right_arrow.png</iconset>
+              </property>
+              <property name="iconSize">
+               <size>
+                <width>20</width>
+                <height>20</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="0" column="1">
+           <layout class="QVBoxLayout" name="verticalLayout_3">
+            <item>
+             <widget class="QLabel" name="speedLabel">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QLabel{
+	color:white;
+	min-width: 100px;
+	min-height: 30px;
+	max-width: 100px;
+	max-height: 30px;
+	font-size: 13px;
+	background-color: rgba(0, 0, 0, 150); 
+	border-radius: 5px;
+   	text-align: center;
+    	alignment: center;
+	margin-top:5px;
+
+}</string>
+              </property>
+              <property name="text">
+               <string>    2倍速播放中</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="infoLabel">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="minimumSize">
+               <size>
+                <width>0</width>
+                <height>49</height>
+               </size>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>624</width>
+                <height>49</height>
+               </size>
+              </property>
+              <property name="styleSheet">
+               <string notr="true">QLabel {
+        background-color: rgba(0, 0, 0, 160);  /* 半透明黑 */
+	max-height: 18px;
+	min-height:18px;
+	max-width: 600px;
+        color: white;                          /* 高对比字体 */
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 12px;
+        font-weight: bold;
+	margin-top:15px;
+ }</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="verticalSpacer">
+              <property name="orientation">
+               <enum>Qt::Orientation::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>198</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="logoBtn">
+              <property name="styleSheet">
+               <string notr="true">QPushButton{
+	max-height:50px;
+	max-width:50px;
+	min-height:50px;
+	min-width:50px;
+	border:none;
+	background-color: transparent;
+}</string>
+              </property>
+              <property name="text">
+               <string/>
+              </property>
+              <property name="icon">
+               <iconset resource="../resources/Resource.qrc">
+                <normaloff>:/SmartPlayer-icon/logo.png</normaloff>:/SmartPlayer-icon/logo.png</iconset>
+              </property>
+              <property name="iconSize">
+               <size>
+                <width>50</width>
+                <height>50</height>
+               </size>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="verticalSpacer_2">
+              <property name="orientation">
+               <enum>Qt::Orientation::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>248</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="0" column="0">
+           <spacer name="horizontalSpacer_3">
+            <property name="orientation">
+             <enum>Qt::Orientation::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>345</width>
+              <height>460</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <layout class="QVBoxLayout" name="verticalLayout">
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout">
+           <property name="spacing">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QPushButton" name="addFileBtn">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>添加文件</string>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton{
+	max-height:25px;
+	max-width:25px;
+	min-height:25px;
+	min-width:25px;
+	border:none;
+}</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset resource="../resources/Resource.qrc">
+               <normaloff>:/SmartPlayer-icon/add_file.png</normaloff>:/SmartPlayer-icon/add_file.png</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="addDirBtn">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>添加文件夹</string>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton{
+	max-height:25px;
+	max-width:25px;
+	min-height:25px;
+	min-width:25px;
+	border:none;
+}</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset resource="../resources/Resource.qrc">
+               <normaloff>:/SmartPlayer-icon/add_dir.png</normaloff>:/SmartPlayer-icon/add_dir.png</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="clearListBtn">
+             <property name="cursor">
+              <cursorShape>PointingHandCursor</cursorShape>
+             </property>
+             <property name="toolTip">
+              <string>清空列表</string>
+             </property>
+             <property name="styleSheet">
+              <string notr="true">QPushButton{
+	max-height:25px;
+	max-width:25px;
+	min-height:25px;
+	min-width:25px;
+	border:none;
+}</string>
+             </property>
+             <property name="text">
+              <string/>
+             </property>
+             <property name="icon">
+              <iconset resource="../resources/Resource.qrc">
+               <normaloff>:/SmartPlayer-icon/clear_list.png</normaloff>:/SmartPlayer-icon/clear_list.png</iconset>
+             </property>
+             <property name="iconSize">
+              <size>
+               <width>20</width>
+               <height>20</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QListWidget" name="fileList">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+             <horstretch>0</horstretch>
+             <verstretch>10</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="minimumSize">
+            <size>
+             <width>290</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>290</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QListWidget{
+	background-color: #000000;
+	border:none;
+}
+QListWidget::item:selected {
+    background: transparent;
+}
+QListWidget::item:hover {
+        background: rgba(100, 100, 100,100);  /* 半透明灰色悬浮 */
+    }
+
+/* ========== 暗色滚动条（仅作用于 fileList 内的滚动条） ========== */
+
+/* 垂直滚动条 */
+QListWidget#fileList QScrollBar:vertical {
+    background: transparent;             /* 整条滚动条背景透明 */
+    width: 8px;                          /* 滚动条宽度 */
+    margin: 4px 2px 4px 0;               /* 上下留出 4px 让滑块不会贴边 */
+    border: none;
+}
+QListWidget#fileList QScrollBar::handle:vertical {
+    background: rgba(255, 255, 255, 0.18); /* 半透明白,叠加在黑底上呈深灰 */
+    min-height: 40px;                    /* 滑块最小高度,避免太短看不见 */
+    border-radius: 4px;                  /* 圆角 */
+    border: none;
+}
+QListWidget#fileList QScrollBar::handle:vertical:hover {
+    background: rgba(255, 255, 255, 0.32); /* hover 变亮 */
+}
+QListWidget#fileList QScrollBar::handle:vertical:pressed {
+    background: rgba(255, 255, 255, 0.45); /* 按下时更亮 */
+}
+QListWidget#fileList QScrollBar::add-line:vertical,
+QListWidget#fileList QScrollBar::sub-line:vertical {
+    background: none;                    /* 隐藏上下箭头按钮 */
+    border: none;
+    height: 0px;
+}
+QListWidget#fileList QScrollBar::add-page:vertical,
+QListWidget#fileList QScrollBar::sub-page:vertical {
+    background: none;                    /* 滑槽未被覆盖部分透明 */
+    border: none;
+}
+
+/* 水平滚动条（保留旧风格,顺手改成暗色）*/
+QListWidget#fileList QScrollBar:horizontal {
+    background: transparent;
+    height: 8px;
+    margin: 0 4px 2px 4px;
+    border: none;
+}
+QListWidget#fileList QScrollBar::handle:horizontal {
+    background: rgba(255, 255, 255, 0.18);
+    min-width: 40px;
+    border-radius: 4px;
+    border: none;
+}
+QListWidget#fileList QScrollBar::handle:horizontal:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+QListWidget#fileList QScrollBar::handle:horizontal:pressed {
+    background: rgba(255, 255, 255, 0.45);
+}
+QListWidget#fileList QScrollBar::add-line:horizontal,
+QListWidget#fileList QScrollBar::sub-line:horizontal {
+    background: none;                    /* 隐藏左右箭头 */
+    border: none;
+    width: 0px;
+}
+QListWidget#fileList QScrollBar::add-page:horizontal,
+QListWidget#fileList QScrollBar::sub-page:horizontal {
+    background: none;                    /* 滑槽未被覆盖部分透明 */
+    border: none;
+}</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item row="1" column="0">
+     <widget class="QWidget" name="controlBarContainer" native="true">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>0</width>
+        <height>80</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string notr="true"/>
+      </property>
+      <layout class="QVBoxLayout" name="verticalLayout_2">
+       <item>
+        <layout class="QHBoxLayout" name="processSLiderBar">
+         <item>
+          <widget class="QLabel" name="nowTimeLabel">
+           <property name="styleSheet">
+            <string notr="true">QLabel{
+	color:white;
+	background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string>00:00:00</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="VideoSlider" name="progressSlider">
+           <property name="styleSheet">
+            <string notr="true">QSlider{
+background-color: transparent;
+border-radius:5px;
+}
+
+QSlider::groove:horizontal {
+    background-color: #ccc;
+    height: 4px;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    image: url(:/SmartPlayer-icon/tv.png);
+    width: 20px;
+    height: 20px;
+    margin: -10px -3px; /* 使手柄居中 */
+    border-radius: 5px;
+}
+QSlider::sub-page:horizontal {
+    background-color:  rgb(232, 88, 158); /* 已滑动部分的颜色 */
+	border-radius: 5px;
+}
+
+QSlider::add-page:horizontal {
+         background-color: white;
+         border-radius: 5px;
+}</string>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="allTimeLabel">
+           <property name="styleSheet">
+            <string notr="true">QLabel{
+	color:white;
+background-color:transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string>00:00:00</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="controlButtonBar">
+         <item>
+          <widget class="QPushButton" name="openFileBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>打开文件</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+	background-color: transparent;
+	border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/folder.png</normaloff>:/SmartPlayer-icon/folder.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="rtspButton">
+           <property name="toolTip">
+            <string>打开网络流</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+	border-radius:5px;
+	background-color: transparent;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/rtsp.png</normaloff>:/SmartPlayer-icon/rtsp.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="settingBtn">
+           <property name="toolTip">
+            <string>设置</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}
+</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/setting.png</normaloff>:/SmartPlayer-icon/setting.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>24</width>
+             <height>24</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="aiSummaryBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="statusTip">
+            <string>AI总结</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}
+</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/ai_summay_2.png</normaloff>:/SmartPlayer-icon/ai_summay_2.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>28</width>
+             <height>28</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>278</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QPushButton" name="switchPlayModeBtn">
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/list_circle.png</normaloff>:/SmartPlayer-icon/list_circle.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>26</width>
+             <height>26</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="preVideoBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>上一个</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/last_video.png</normaloff>:/SmartPlayer-icon/last_video.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="back3sBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>后退10s</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/back.png</normaloff>:/SmartPlayer-icon/back.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="startBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>播放</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/start.png</normaloff>:/SmartPlayer-icon/start.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>30</width>
+             <height>30</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="forward3sBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>快进10s</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/forward.png</normaloff>:/SmartPlayer-icon/forward.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="nextVideoBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>下一个</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/next_video.png</normaloff>:/SmartPlayer-icon/next_video.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="stopBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>停止</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}
+</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/stop.png</normaloff>:/SmartPlayer-icon/stop.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>118</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QComboBox" name="mutipleSPeed">
+           <property name="minimumSize">
+            <size>
+             <width>50</width>
+             <height>20</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>50</width>
+             <height>20</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QComboBox {
+    border:none;
+    border-radius: 8px;
+    padding: 5px;
+    background-color: transparent;
+	color:white;
+}
+
+
+QComboBox QAbstractItemView {
+    color: white; /* 修改下拉框内字体颜色 */
+    background-color: black; /* 修改下拉框背景颜色 */
+    selection-background-color: blue; /* 修改选中项的背景颜色 */
+    selection-color: white; /* 修改选中项的字体颜色 */
+}</string>
+           </property>
+           <property name="currentText">
+            <string>1.0x</string>
+           </property>
+           <property name="currentIndex">
+            <number>2</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>2.0x</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>1.5x</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>1.0x</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>0.5x</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="subtitleBtn">
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/ai_subtitles_2.png</normaloff>:/SmartPlayer-icon/ai_subtitles_2.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>26</width>
+             <height>26</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="volumeBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/volume.png</normaloff>:/SmartPlayer-icon/volume.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="VideoSlider" name="volumeSlider">
+           <property name="minimumSize">
+            <size>
+             <width>100</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>100</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QSlider{
+background-color: transparent;
+border-radius:5px;
+}
+
+QSlider::groove:horizontal {
+    background-color: #ccc;
+    height: 3px;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    background-color:rgb(66, 148, 255);
+    width: 12px;
+    height: 12px;
+    margin: -4px 0; /* 使手柄居中 */
+    border-radius: 5px;
+}
+QSlider::sub-page:horizontal {
+    background-color: rgb(66, 148, 255); /* 已滑动部分的颜色 */
+}</string>
+           </property>
+           <property name="orientation">
+            <enum>Qt::Orientation::Horizontal</enum>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="volumeLabel">
+           <property name="minimumSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>25</width>
+             <height>25</height>
+            </size>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QLabel{
+	color:white;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string>50</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="screenShotBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>视频截图</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/take_shot.png</normaloff>:/SmartPlayer-icon/take_shot.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>26</width>
+             <height>26</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="fullScreenBtn">
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
+           </property>
+           <property name="toolTip">
+            <string>全屏</string>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton{
+	max-height:35px;
+	max-width:35px;
+	min-height:35px;
+	min-width:35px;
+	border:none;
+background-color: transparent;
+border-radius:5px;
+}</string>
+           </property>
+           <property name="text">
+            <string/>
+           </property>
+           <property name="icon">
+            <iconset resource="../resources/Resource.qrc">
+             <normaloff>:/SmartPlayer-icon/full_screen.png</normaloff>:/SmartPlayer-icon/full_screen.png</iconset>
+           </property>
+           <property name="iconSize">
+            <size>
+             <width>23</width>
+             <height>23</height>
+            </size>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>VideoSlider</class>
+   <extends>QSlider</extends>
+   <header>videoslider.h</header>
+  </customwidget>
+  <customwidget>
+   <class>OpenGLRenderer</class>
+   <extends>QOpenGLWidget</extends>
+   <header>render/openglrenderer.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
+ <resources>
+  <include location="../resources/Resource.qrc"/>
+ </resources>
+ <connections/>
+</ui>
