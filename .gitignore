@@ -1,44 +1,63 @@
-# Qt 编译产物
+# ============ 构建产物 ============
+# qmake 旧产物（保留规则防回潮）
 build/
 debug/
 release/
 *.pro.user
 *.pro.user.*
 *.qmake.stash
+ui_*.h
+Makefile
+Makefile.Debug
+Makefile.Release
+
+# cmake 产物
+build-cmake/
+CMakeLists.txt.user
+.qtc_clangd/
+.cmake/
+.qt/
+.qtc/
+cmake_install.cmake
+CMakeCache.txt
+CMakeCache.txt.prev
+CMakeFiles/
+CMakeScripts/
+CMakeUserPresets.json
+Testing/
+qtcsettings.cmake
+Smart_Player_autogen/
+Smart_Player_autogen_timestamp_deps/
+
+# ============ 编译器产物 ============
 *.o
 *.obj
 *.so
 *.dll
-*.exe
 *.lib
 *.a
-*.pdb  # 重点：忽略调试文件（罪魁祸首）
+*.exe
+*.bin
+*.pdb
 *.ilk
 *.pch
 *.ipch
 *.suo
 *.vcxproj.user
 
-# 调试/临时文件
-*.pdb
-*.dSYM/
+# ============ 调试 / 临时 ============
 *.log
 *.swp
 *.swo
+*.dSYM/
 .DS_Store
 Thumbs.db
+audio_dump.pcm
+crash.dmp
 
-# FFmpeg 相关编译产物
-*.dll
-*.so
-*.a
-*.lib
-*.bin
-
-# 可执行文件
+# 历史遗留的可执行文件名
 Smart_OBS
 
-# 设计文档
-*.txt
-文稿面板设计方案.md
-内存安全分析报告.md
+# ============ Skills 临时文件 ============
+skills-lock.json
+full_review_report.json
