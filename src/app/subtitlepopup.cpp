@@ -16,7 +16,6 @@ SubtitlePopup::SubtitlePopup(QWidget *parent)
     mainLayout->setContentsMargins(12, 10, 12, 10);
     mainLayout->setSpacing(8);
 
-    // ===== 第一行：实时字幕 =====
     auto *row1 = new QHBoxLayout;
     QLabel *label1 = new QLabel("实时字幕");
 
@@ -37,7 +36,6 @@ SubtitlePopup::SubtitlePopup(QWidget *parent)
     row1->addStretch();
     row1->addWidget(realtimeBtn_);
 
-    // ===== 第二行：中英翻译 =====
     auto *row2 = new QHBoxLayout;
     QLabel *label2 = new QLabel("中英翻译");
 
@@ -58,7 +56,6 @@ SubtitlePopup::SubtitlePopup(QWidget *parent)
     row2->addStretch();
     row2->addWidget(translateBtn_);
 
-    // ===== 第三行：字幕字体大小 =====
     auto *row3 = new QHBoxLayout;
     QLabel *label3 = new QLabel("字体大小");
     label3->setFixedWidth(65);
@@ -86,7 +83,6 @@ SubtitlePopup::SubtitlePopup(QWidget *parent)
     mainLayout->addLayout(row2);
     mainLayout->addLayout(row3);
 
-    // ===== 样式 =====
     setStyleSheet(R"(
         QWidget {
             background-color: #2b2b2b;

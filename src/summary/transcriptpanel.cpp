@@ -584,8 +584,34 @@ TranscriptPanel::TranscriptPanel(QWidget* parent) : QWidget(parent) {
             color: #374151;
             font-size: 11px;
             font-family: Microsoft YaHei, sans-serif;
-            padding: 0 4px;
+            spacing: 4px;
+            padding: 0;
         }
+        QCheckBox::indicator {
+            width: 13px;
+            height: 13px;
+            border: 1.5px solid #D1D5DB;
+            border-radius: 3px;
+            background-color: #FFFFFF;
+        }
+        QCheckBox::indicator:hover {
+            border-color: #38BDF8;
+            background-color: #F0F9FF;
+        }
+        QCheckBox::indicator:checked {
+            border-color: #0EA5E9;
+            background-color: #0EA5E9;
+            image: url(:/SmartPlayer-icon/check_white.png);
+        }
+        QCheckBox::indicator:checked:hover {
+            background-color: #38BDF8;
+            border-color: #38BDF8;
+        }
+        QCheckBox::indicator:disabled {
+            border-color: #E5E7EB;
+            background-color: #F9FAFB;
+        }
+        QCheckBox:disabled { color: #9CA3AF; }
         QListWidget {
             border: none;
             background: #FFFFFF;

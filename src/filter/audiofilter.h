@@ -4,7 +4,7 @@
 #include <QObject>
 #include <atomic>
 #include <string>
-#include <QMutex> // 新增：线程安全锁
+#include <QMutex>
 
 extern "C" {
 #include <libavfilter/avfilter.h>
@@ -12,7 +12,7 @@ extern "C" {
 #include <libavfilter/buffersink.h>
 #include <libavutil/avutil.h>
 #include <libavcodec/avcodec.h>
-#include <libavutil/channel_layout.h> // FFmpeg7.1必备
+#include <libavutil/channel_layout.h>
 }
 
 class AudioFilter : public QObject {

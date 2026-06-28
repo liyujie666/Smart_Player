@@ -1,6 +1,7 @@
 #ifndef VIDEOITEMWIDGET_H
 #define VIDEOITEMWIDGET_H
 #include <QEnterEvent>
+#include <QString>
 #include <QWidget>
 #include <QImage>
 
@@ -21,8 +22,12 @@ public:
 protected:
     void enterEvent(QEnterEvent *event) override;
     void leaveEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 private:
+    void updateFileNameElision();
+
     Ui::VideoItemWidget *ui;
+    QString m_fullFileName;
 };
 
 

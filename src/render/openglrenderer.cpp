@@ -101,8 +101,6 @@ void OpenGLRenderer::initializeGL()
         }
     )";
 
-    // 双格式着色器：YUV420P + NV12
-
     const char* fragmentShader = R"(
     varying vec2 vTexCoord;
     uniform sampler2D yTexture;
@@ -123,7 +121,7 @@ void OpenGLRenderer::initializeGL()
             float y = texture2D(yTexture, vTexCoord).r;
             float u = 0.0, v = 0.0;
 
-            if(renderMode == 1) { // NV12 ✅ 修复这里！
+            if(renderMode == 1) { // NV12
                 vec2 uv = texture2D(uvTexture, vTexCoord).rg;
                 u = uv.r;  // 正确：U = R通道
                 v = uv.g;  // 正确：V = G通道
@@ -183,7 +181,6 @@ void OpenGLRenderer::initializeGL()
     vbo_->release();
     vao_->release();
 
-    // ========== 字幕专用着色器（独立 VAO/VBO） ==========
     const char* subVert = R"(
         attribute vec2 aPos;
         attribute vec2 aTexCoord;
@@ -226,7 +223,6 @@ void OpenGLRenderer::initializeGL()
     subVbo_->release();
     subVao_->release();
 
-    // ========== 初始化所有纹理 ==========
     yTexture_  = new QOpenGLTexture(QOpenGLTexture::Target2D);
     uTexture_  = new QOpenGLTexture(QOpenGLTexture::Target2D);
     vTexture_  = new QOpenGLTexture(QOpenGLTexture::Target2D);
@@ -297,7 +293,6 @@ void OpenGLRenderer::paintGL()
 
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-    // 绘制字幕
     {
         if (subtitleMutex_.tryLock()) {
             int localSubWidth = subTitleWidth_;
@@ -393,7 +388,6 @@ void OpenGLRenderer::uploadNV12Texture(const QByteArray &nv12Data, int width, in
     const uint8_t* data = (const uint8_t*)nv12Data.constData();
     int ySize = width * height;
 
-    // Y纹理
     yTexture_->destroy();
     yTexture_->setSize(width, height);
     yTexture_->setFormat(QOpenGLTexture::R8_UNorm);
@@ -420,14 +414,12 @@ void OpenGLRenderer::uploadRGBATexture(const QByteArray &rgbData, int width, int
 
     const uint8_t* data = (const uint8_t*)rgbData.constData();
 
-    // 初始化RGBA纹理
     rgbTexture_->destroy();
     rgbTexture_->setSize(width, height);
     rgbTexture_->setFormat(QOpenGLTexture::RGBA8_UNorm);
     rgbTexture_->allocateStorage();
     rgbTexture_->setData(QOpenGLTexture::RGBA, QOpenGLTexture::UInt8, data);
 
-    // 纹理参数
     rgbTexture_->setWrapMode(QOpenGLTexture::ClampToEdge);
     rgbTexture_->setMinMagFilters(QOpenGLTexture::Linear, QOpenGLTexture::Linear);
 

@@ -101,7 +101,7 @@
                <string/>
               </property>
               <property name="icon">
-               <iconset resource="../resources/Resource.qrc">
+               <iconset resource="../../resources/Resource.qrc">
                 <normaloff>:/SmartPlayer-icon/right_arrow.png</normaloff>:/SmartPlayer-icon/right_arrow.png</iconset>
               </property>
               <property name="iconSize">
@@ -210,7 +210,7 @@
                <string/>
               </property>
               <property name="icon">
-               <iconset resource="../resources/Resource.qrc">
+               <iconset resource="../../resources/Resource.qrc">
                 <normaloff>:/SmartPlayer-icon/logo.png</normaloff>:/SmartPlayer-icon/logo.png</iconset>
               </property>
               <property name="iconSize">
@@ -280,7 +280,7 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset resource="../resources/Resource.qrc">
+              <iconset resource="../../resources/Resource.qrc">
                <normaloff>:/SmartPlayer-icon/add_file.png</normaloff>:/SmartPlayer-icon/add_file.png</iconset>
              </property>
              <property name="iconSize">
@@ -312,7 +312,7 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset resource="../resources/Resource.qrc">
+              <iconset resource="../../resources/Resource.qrc">
                <normaloff>:/SmartPlayer-icon/add_dir.png</normaloff>:/SmartPlayer-icon/add_dir.png</iconset>
              </property>
              <property name="iconSize">
@@ -344,7 +344,7 @@
               <string/>
              </property>
              <property name="icon">
-              <iconset resource="../resources/Resource.qrc">
+              <iconset resource="../../resources/Resource.qrc">
                <normaloff>:/SmartPlayer-icon/clear_list.png</normaloff>:/SmartPlayer-icon/clear_list.png</iconset>
              </property>
              <property name="iconSize">
@@ -388,6 +388,17 @@ QListWidget::item:selected {
 QListWidget::item:hover {
         background: rgba(100, 100, 100,100);  /* 半透明灰色悬浮 */
     }
+
+/* ========== Tooltip 暗色风格（与黑色播放列表协调） ========== */
+QToolTip {
+    background-color: rgba(30, 30, 30, 230);
+    color: #FFFFFF;
+    border: 1px solid rgba(255, 255, 255, 60);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-family: Microsoft YaHei, PingFang SC, sans-serif;
+    font-size: 12px;
+}
 
 /* ========== 暗色滚动条（仅作用于 fileList 内的滚动条） ========== */
 
@@ -574,7 +585,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/folder.png</normaloff>:/SmartPlayer-icon/folder.png</iconset>
            </property>
            <property name="iconSize">
@@ -605,7 +616,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/rtsp.png</normaloff>:/SmartPlayer-icon/rtsp.png</iconset>
            </property>
            <property name="iconSize">
@@ -637,7 +648,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/setting.png</normaloff>:/SmartPlayer-icon/setting.png</iconset>
            </property>
            <property name="iconSize">
@@ -672,7 +683,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/ai_summay_2.png</normaloff>:/SmartPlayer-icon/ai_summay_2.png</iconset>
            </property>
            <property name="iconSize">
@@ -713,7 +724,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/list_circle.png</normaloff>:/SmartPlayer-icon/list_circle.png</iconset>
            </property>
            <property name="iconSize">
@@ -747,7 +758,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/last_video.png</normaloff>:/SmartPlayer-icon/last_video.png</iconset>
            </property>
            <property name="iconSize">
@@ -781,7 +792,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/back.png</normaloff>:/SmartPlayer-icon/back.png</iconset>
            </property>
            <property name="iconSize">
@@ -815,7 +826,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/start.png</normaloff>:/SmartPlayer-icon/start.png</iconset>
            </property>
            <property name="iconSize">
@@ -849,7 +860,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/forward.png</normaloff>:/SmartPlayer-icon/forward.png</iconset>
            </property>
            <property name="iconSize">
@@ -883,7 +894,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/next_video.png</normaloff>:/SmartPlayer-icon/next_video.png</iconset>
            </property>
            <property name="iconSize">
@@ -918,7 +929,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/stop.png</normaloff>:/SmartPlayer-icon/stop.png</iconset>
            </property>
            <property name="iconSize">
@@ -946,31 +957,74 @@ border-radius:5px;
           <widget class="QComboBox" name="mutipleSPeed">
            <property name="minimumSize">
             <size>
-             <width>50</width>
-             <height>20</height>
+             <width>96</width>
+             <height>22</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>50</width>
-             <height>20</height>
+             <width>104</width>
+             <height>26</height>
             </size>
+           </property>
+           <property name="cursor">
+            <cursorShape>PointingHandCursor</cursorShape>
            </property>
            <property name="styleSheet">
             <string notr="true">QComboBox {
-    border:none;
-    border-radius: 8px;
-    padding: 5px;
-    background-color: transparent;
-	color:white;
+   background-color: rgba(30, 30, 30, 180);
+   color: #FFFFFF;
+   border: none;
+   border-radius: 8px;
+   padding: 2px 22px 2px 10px;
+   font-size: 12px;
+   font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+   selection-background-color: transparent;
 }
-
-
+QComboBox:hover {
+    background-color: rgba(50, 50, 50, 200);
+}
+QComboBox:focus {
+    background-color: rgba(60, 60, 60, 220);
+}
+QComboBox:disabled {
+    background-color: rgba(50, 50, 50, 100);
+    color: #9CA3AF;
+}
+QComboBox::drop-down {
+   subcontrol-origin: padding;
+   subcontrol-position: top right;
+   width: 20px;
+   border: none;
+   border-image: none;
+   background: transparent;
+   background-color: transparent;
+   image: none;
+}
+QComboBox::down-arrow {
+   image: url(:/SmartPlayer-icon/arrow_down_light.png);
+   width: 12px;
+   height: 8px;
+   margin-right: 4px;
+   background: transparent;
+}
 QComboBox QAbstractItemView {
-    color: white; /* 修改下拉框内字体颜色 */
-    background-color: black; /* 修改下拉框背景颜色 */
-    selection-background-color: blue; /* 修改选中项的背景颜色 */
-    selection-color: white; /* 修改选中项的字体颜色 */
+    background-color: rgba(40, 40, 40, 250);
+    color: #FFFFFF;
+    border: 1px solid rgba(80, 80, 80, 200);
+    border-radius: 8px;
+    padding: 4px;
+    selection-background-color: rgba(80, 80, 80, 200);
+    selection-color: #FFFFFF;
+    outline: 0;
+}
+QComboBox QAbstractItemView::item {
+    padding: 5px 12px;
+    border-radius: 4px;
+    min-height: 18px;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: rgba(80, 80, 80, 160);
 }</string>
            </property>
            <property name="currentText">
@@ -1018,7 +1072,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/ai_subtitles_2.png</normaloff>:/SmartPlayer-icon/ai_subtitles_2.png</iconset>
            </property>
            <property name="iconSize">
@@ -1049,7 +1103,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/volume.png</normaloff>:/SmartPlayer-icon/volume.png</iconset>
            </property>
            <property name="iconSize">
@@ -1154,7 +1208,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/take_shot.png</normaloff>:/SmartPlayer-icon/take_shot.png</iconset>
            </property>
            <property name="iconSize">
@@ -1188,7 +1242,7 @@ border-radius:5px;
             <string/>
            </property>
            <property name="icon">
-            <iconset resource="../resources/Resource.qrc">
+            <iconset resource="../../resources/Resource.qrc">
              <normaloff>:/SmartPlayer-icon/full_screen.png</normaloff>:/SmartPlayer-icon/full_screen.png</iconset>
            </property>
            <property name="iconSize">
@@ -1221,7 +1275,7 @@ border-radius:5px;
   </customwidget>
  </customwidgets>
  <resources>
-  <include location="../resources/Resource.qrc"/>
+  <include location="../../resources/Resource.qrc"/>
  </resources>
  <connections/>
 </ui>

@@ -14,7 +14,7 @@
 | UI 框架 | Qt 6.9（Core / Gui / Widgets / OpenGL / Multimedia / Network / Svg / Concurrent） |
 | 多媒体栈 | FFmpeg（avformat / avcodec / swscale / swresample / avfilter）+ SDL2 |
 | ASR | whisper.cpp（自带 ggml-base / ggml-cpu） |
-| 架构 | MVVM（View / ViewModel / Model 三层，渐进式重构中） |
+| 架构 | MVVM（View / ViewModel / Model 三层，重构完成） |
 | 平台 | Windows 10+，MinGW / MSVC |
 
 ---
@@ -140,155 +140,87 @@ CMake 会自动：
 
 ---
 
-## 5. 本次变更分析（`git diff`）
+## 5. 本次更新摘要
 
-> **当前工作树相对 `origin/refactor/mvvm-project-arch-refactor` HEAD 的所有未提交改动。**
-> 主要包含两块：**(A) qmake → CMake 迁移与第三方清理**，**(B) 工程目录整理**。
+> **本节对应工作区未提交改动**（2026-06-28，`refactor/cmake-mvvm` 分支），主题为 **Windows 全屏修复 + UI 主题重做 + 一批状态/线程 bug 修复**，未触及 MVVM 三层结构。
 
-### 5.1 概览（`git diff --stat`）
+### 5.1 概览
 
 ```
- 204 files changed, 2020 insertions(+), 44402 deletions(-)
+ 32 files changed, 1423 insertions(+), 930 deletions(-)
+未跟踪新增：resources/SmartPlayer-icon/*.png  x6、tools/make_check_icon.py
 ```
 
-净删除 4.2 万行，绝大多数来自**翻译模块的完全移除**（见 5.2）。
+净增 493 行 —— 主要是 `settingdialog.ui` 重排 + `summarysettingsdialog.cpp` 大段样式表新增。
 
-### 5.2 模块级改动
+### 5.2 重点改动
 
-#### 5.2.1 翻译模块（translator/）—— 完全移除
+#### 5.2.1 Windows + OpenGL 全屏 bug 修复（核心）
 
-| 删除项 | 文件数 | 行数 |
-|--------|------|------|
-| `translator/*.cpp` / `*.h` | 6 | ≈ 705 行 |
-| `dependencies/include/ctranslate2/**` | 95 | ≈ 9.4k 行 |
-| `dependencies/include/sentencepiece/**` | 2 | ≈ 967 行 |
-| `video_summary.md` | 1 | 87 行 |
+`videoWidget` 是 `QOpenGLWidget`，主窗口进入 `showFullScreen()` 后整个 `QMainWindow` 都会成为 OpenGL surface；Windows DWM 因此拒绝把 popup 类顶层窗口（QComboBox 下拉、Qt::Popup 弹窗、菜单、SubtitlePopup）合成到主窗口之上 —— 全屏下点倍速 combobox 不弹、AI 字幕 SubtitlePopup 不显示。
 
-**动机**：CTranslate2 + SentencePiece 的依赖体积大、CUDA 编译选项硬编码（见原 `内存安全分析报告 3.13`），且 `translator/` 模块从未真正启用（在 `Smart_Player.pro` 里一直被 `HEADERS -=` / `SOURCES -=` 显式排除编译）。本次彻底清理由 cmake 化的同时一并完成。
+修复方式（按官方建议，给全屏 HWND 加 `WS_BORDER`）：
 
-**`.pro` 副作用**：
+- `main.cpp`：窗口 `show()` 之后立即调用 `QNativeInterface::Private::QWindowsWindow::setHasBorderInFullScreen(true)`，标记存入 `QWindow`。
+- `mainwindow.cpp::event()`：监听 `QEvent::WinIdChange`，拿到 HWND 后 `SetWindowLongPtr(..., GWL_STYLE, ... | WS_BORDER)`，让 DWM 走完整合成路径。
+- `CMakeLists.txt` / `Smart_Player.pro`：增加 `Qt6::GuiPrivate`（`gui-private`）链接，仅 `WIN32` 下生效。
 
-```diff
--LIBS += ... -lctranslate2 -lsentencepiece -lsentencepiece_train
-+LIBS += -L$$PWD/dependencies/lib -lavcodec -lavdevice -lavfilter -lavformat ^
-+        -lavutil -lpostproc -lswresample -lswscale -lSDL2 -lwhisper ^
-+        -lggml -lggml-base -lggml-cpu
--# 显式排除未启用的 translator/ 模块
--HEADERS -= $$files($$PWD/translator/*.h,   false)
--SOURCES -= $$files($$PWD/translator/*.cpp, false)
-```
+#### 5.2.2 UI 主题重做
 
-#### 5.2.2 qmake → CMake 迁移
+三个对话框 / 面板分别走三套浅色风格：
 
-新增（**A**）：
-
-| 文件 | 说明 |
-|------|------|
-| `CMakeLists.txt` | 主构建脚本（278 行） |
-| `cmake/FindWhisper.cmake` | 自定义 Find 模块，处理 MinGW 导入库名（`whisper.lib` 而非 `-lwhisper`） |
-| `build.bat` / `clean.bat` | 一键脚本（现位于 `scripts/`） |
-| `build-cmake/` | cmake 构建产物目录（已加入 `.gitignore`） |
-
-CMake 关键设计：
-
-1. **GLOB 自动收集源码**：新增 `.cpp/.h/.ui` 不用改 `CMakeLists.txt`，与原 `.pro` 行为一致。
-2. **链接顺序硬编码绝对路径**：避免 MinGW 下 `-lwhisper` 解析不到 `whisper.lib`（不带 `lib` 前缀）。
-3. **INTERFACE target 包装 whisper**：`add_library(whisper_import INTERFACE)` 把 whisper + ggml 当一组链接。
-4. **POST_BUILD 自动复制**：FFmpeg / Qt / TLS 插件 DLL 自动落到 exe 同级。
-5. **TLS 插件路径三段探测**：CMake 缓存 → `Qt6_DIR` 反推 → 硬编码 `D:/Qt/6.9.0/mingw_64/plugins/tls` 兜底。
-
-删除（**D**）：
-
-| 文件 | 原因 |
-|------|------|
-| `Makefile` / `Makefile.Debug` / `Makefile.Release` | qmake 产物 |
-| `.qmake.stash` | qmake 缓存 |
-| `ui_mainwindow.h` 等 5 个 `ui_*.h` | qmake 的 uic 产物，cmake 用 `CMAKE_AUTOUIC` 重新生成 |
-| `Smart_Player.pro.user` ×2 | QtCreator 用户配置（不应入库） |
-| `CMakeLists.txt.user` | QtCreator 用户配置（已忽略） |
-| `build/` / `debug/` / `release/` | qmake 构建树 |
-| `full_review_report.json` / `skills-lock.json` / `build_log.txt` | 临时文件 |
-
-#### 5.2.3 工程目录整理（本次新增）
-
-| 原位置 | 新位置 | 原因 |
-|--------|--------|------|
-| `MVVM_REFACTOR_PLAN.md` / `内存安全分析报告.md` / `文稿面板设计方案.md` | `docs/` | 设计文档归类 |
-| `build.bat` / `clean.bat` | `scripts/` | 构建脚本归类 |
-| `Resource.qrc` / `app_icon.rc` / `logo.ico` | `resources/` | 资源文件归类 |
-| `SmartPlayer-icon/` | `resources/SmartPlayer-icon/` | 资源子目录归类 |
-
-`CMakeLists.txt` 与 `Smart_Player.pro` 同步更新为新路径：
-
-```diff
- add_executable(${PROJECT_NAME} WIN32
-     main.cpp
-     ${ALL_SOURCES}
-     ${ALL_HEADERS}
-     ${APP_FORMS}
--    Resource.qrc
--    app_icon.rc
-+    ${RESOURCES_DIR}/Resource.qrc
-+    ${RESOURCES_DIR}/app_icon.rc
- )
-
- RESOURCES  += \
--    Resource.qrc
--RC_FILE = app_icon.rc
-+    resources/Resource.qrc
-+RC_FILE = resources/app_icon.rc
-```
-
-`scripts/build.bat` / `scripts/clean.bat` 中 `BUILD_DIR` 改为 `%SCRIPT_DIR%..\build-cmake`（脚本在子目录里，要回到项目根）。
-
-### 5.3 代码级改动
-
-| 文件 | 改动 | 说明 |
+| 界面 | 风格 | 主色 |
 |------|------|------|
-| `main.cpp` | +12 行 | 增加 `QCoreApplication::addLibraryPath` 显式注册 `plugins/` 和 `tls/`，并 `qputenv("QT_TLS_BACKEND", "schannel")` |
-| `app/mainwindow.h` | +3 行 | 新增 `updateControlBarGeometry()` 私有方法 |
-| `app/mainwindow.cpp` | +43 行 | 全屏态下控制栏宽度的同步逻辑（修复打开/关闭文件列表后控制栏错位） |
-| `app/videoslider.cpp` | +14 行 | `mouseReleaseEvent` 末尾补 emit `sliderReleased()`，让"点击 seek"和"拖动 seek"行为一致 |
-| `core/playercore.cpp` | -1 行 | 注释掉视频 pts 的 `qDebug` 噪声 |
-| `render/audiooutput.cpp` | -2 行 | 注释掉音频 pts 的 `qDebug` 噪声 |
-| `summary/summarypanel.cpp` | +66 行 | (1) 增加暗色滚动条样式；(2) `onRerunClicked` 真正跳过缓存重跑（之前只是 `onStartClicked`，无法换模型） |
-| `summary/transcriptpanel.cpp` | +26 行 | 文稿面板同样的暗色滚动条样式 |
+| `SettingDialog` | 玫红/粉色 + QGroupBox 分组 | `#DB2777` / `#F472B6` / `#EC4899` |
+| `SummarySettingsDialog` | 紫色 + QGroupBox 分组 | `#6366F1` / `#8B5CF6` |
+| `SummaryPanel` / `TranscriptPanel` | 原有浅色 + 新增暗色细滚动条 + QCheckBox 自定义 indicator | `#9CA3AF` |
 
-> 这些代码级改动与目录整理无关，但属于本次未提交的工作树状态；本次提交只包含**目录整理 + cmake 迁移**，代码改动应另起一次提交。
+`settingdialog.ui` 全部按"加速与解码 / 画面调节 / 画面尺寸 / 路径设置"四组重构，旧 QHBoxLayout 全拆为 QGroupBox + Form 风格，窗口从 350×500 改成 460×620（最大 520×800）。控件统一加 `cursor: PointingHandCursor` 与全局 QSS（QPushButton 渐变 / QLineEdit focus 玫红描边 / QComboBox 自绘下拉箭头 / QScrollBar 8px 暗色细条）。
 
-### 5.4 `.gitignore` 重写
+新增图标资源（`tools/make_check_icon.py` 用 PIL 生成 + 4 个箭头 PNG）：
 
-| 旧规则 | 新增 |
-|--------|------|
-| 只忽略 qmake 产物（`build/` `debug/` `release/` `*.pro.user` 等） | 新增 cmake 产物：`build-cmake/`、`CMakeLists.txt.user`、`.qtc_clangd/`、`.cmake/`、`.qt/`、`CMakeFiles/`、`CMakeCache.txt` 等 |
-| 缺少 cmake 临时目录 | 新增 `Testing/`、`cmake_install.cmake`、`qtcsettings.cmake`、`Smart_Player_autogen/`、`Smart_Player_autogen_timestamp_deps/` |
-| 散乱的临时文件 | 显式列出 `audio_dump.pcm` / `crash.dmp` / `full_review_report.json` / `skills-lock.json` |
+- `arrow_{up,down}_{grey,light}.png`
+- `check_white.png` / `check_skyblue.png`
 
-### 5.5 兼容性 / 风险点
+`Resource.qrc` 同步追加上述 6 个条目。`mainwindow.ui` 把原来指向 `../resources/Resource.qrc` 的 21 处 iconset 全部改成 `../../resources/Resource.qrc`，与 ui 文件位于 `src/app/`、资源位于 `resources/` 的相对路径匹配。
+
+`SubtitlePopup` / `VideoItemWidget` 等若干 UI 类同步做小调整：长文件名加 `QFontMetrics::elidedText` + tooltip 全名、SubtitlePopup 移除装饰性注释、ComboBox 下拉箭头替换为图标。
+
+#### 5.2.3 状态/线程类 bug 修复
+
+| 文件 | 问题 | 修复 |
+|------|------|------|
+| `mainwindow.cpp` `onSliderClicked` / `on_progressSlider_sliderReleased` | `int value * 1000000` 溢出（>33 分钟变负） | 显式 `qint64(value) * 1000000` |
+| `playerviewmodel.cpp` `setVolume` / `setMute` / `setSpeed` | 旧实现 `if (v == m_volume) return;` 会短路 —— 切视频后 `audio_output_` 是新建对象，默认 50/未静音/1.0 倍速，若 VM 缓存的状态相同就跳过推 core，导致新视频停留在错误状态 | 改为**无条件**把当前 UI 状态推给 core，再 emit 变更信号 |
+| `audiooutput.cpp` `resampleFrameToBuffer` | `audio_clock_us_ =` 处加锁后又立即解锁，与下一句 `sync_clock_->set_audio_clock()` 解耦 | 注释掉那段多余的 `QMutexLocker`（`audio_clock_us_` 已在 SDL 回调内自洽，无需再加锁） |
+| `mainwindow.cpp::eventFilter` | 全屏下打开/关闭文件列表、显隐右侧 dock 后 `controlBarContainer` 宽度不同步 | 给 `fileList` / `playerPage` / `m_rightDock` 安装 eventFilter，监听 `Resize/Show/Hide`，用 `QTimer::singleShot(0)` 推迟到事件循环下一轮再 `repositionControlBarFullScreen()` |
+| `videoitemwidget.cpp/.h` | 长文件名截断后无法看到完整路径 | 缓存 `m_fullFileName`，`resizeEvent` 调用 `QFontMetrics::elidedText`，item 整体与 label 都设置 `setToolTip(m_fullFileName)` |
+
+#### 5.2.4 代码清理
+
+- `playercore.cpp` / `audiooutput.cpp` / `openglrenderer.cpp`：删除大量噪声 `qDebug()` 与"复制粘贴式"段落注释（`// 解码` / `// Y纹理` / `// 音量调节` 等），行为不变。
+- `subtitlepopup.cpp` / `videoconverter.cpp` / `videoslider.cpp`：删除冗余注释。
+- `videoslider.h`：去掉无意义的 `/** 点击事件 */` 注释。
+
+### 5.3 兼容性 / 风险点
 
 | 风险 | 缓解 |
 |------|------|
-| `Smart_Player.pro` 中 `resources/Resource.qrc` / `resources/app_icon.rc` 的路径变更 | qmake 用相对路径，已同步更新；如有人仍用 qmake 构建，需要先 `qmake` 重新生成 Makefile |
-| `scripts/build.bat` 中 `BUILD_DIR` 路径变更 | 已改用 `%SCRIPT_DIR%..\build-cmake` |
-| `mainwindow.cpp` 中 `updateControlBarGeometry()` 是新方法 | 配套 `app/mainwindow.h` 已声明；非 ViewModel 重构，纯 UI 修复 |
-| `cmake/FindWhisper.cmake` 强依赖 `dependencies/lib/whisper.lib` 路径 | 已在脚本中显式 `PATHS ${CMAKE_CURRENT_SOURCE_DIR}/dependencies/lib`，同时支持 `whisper_ROOT` 覆盖 |
+| `Qt6::GuiPrivate` 是 Qt 私有接口，未来 Qt 升级可能改名 | 集中在 `main.cpp` 一处使用 + CMake / qmake 都加 `WIN32` 守卫；改名时只影响这一个调用点 |
+| `WinIdChange` 每次拿到 HWND 都改一次 style | `SetWindowLongPtr` 是幂等的，`WS_BORDER` 已存在时再 OR 一次无副作用 |
+| `playerviewmodel.cpp` 不再短路后，setVolume 每次都走 core 链路 | core 内部 `setVolume` 是 setter，开销可忽略 |
+| `settingdialog.ui` 控件名保持兼容 | 所有老 widget objectName（`softwareRadio` / `hardwareRadio` / `decodeCombox` / `lightSlider` / `contrastSlider` / `baoheSlider` / `defaultSize` / `expandSize` / `saveFilePath` / `selectPathBtn` / `modelPathLineEdit` / `uploadModelPathBtn` / `resetConfigBtn` / `confirmBtn` / `cancelBtn`）未改名，dialog 业务代码无需调整 |
 
-### 5.6 验证
+### 5.4 验证
 
-整理后实际跑了一遍 cmake + build：
+本次未提交改动未在本机跑 `cmake --build`，若需验证建议：
 
-```
-$ cmake -G "MinGW Makefiles" -DQt6_DIR=... -S . -B build-cmake
--- Configuring done (0.3s)
--- Generating done (0.3s)
-
-$ cmake --build build-cmake
-[  4%] Automatic RCC for resources/Resource.qrc
-[  6%] Building RC object CMakeFiles/.../resources/app_icon.rc.obj
-[100%] Built target Smart_Player
+```bat
+scripts\build.bat
+build-cmake\Smart_Player.exe
 ```
 
-新路径全部解析正确，链接成功。
+检查项：① 全屏时点击倍速 combobox 是否正常弹出；② 全屏时点击 AI 字幕按钮 SubtitlePopup 是否正常显示；③ 切到下一个视频时音量/倍速/静音是否与 UI 一致；④ 滚动播放列表长文件名是否省略显示 + 悬浮可见全名；⑤ 设置对话框三个 QGroupBox 是否正确分组。
 
 ---
 
@@ -296,10 +228,9 @@ $ cmake --build build-cmake
 
 | 项 | 状态 |
 |----|------|
-| `viewmodel/README.md` 中阶段 3-5（SummaryViewModel / SettingsViewModel / MainWindow < 400 行） | 未启动 |
-| `内存安全分析报告.md` 中 High 18 个问题 | 待修复 |
+| MVVM 阶段 3-5（`SummaryViewModel` / `SettingsViewModel` / `TranscriptViewModel`） | 已完成 |
+| `内存安全分析报告.md` 中 High 18 个问题 | 部分修复中（`AudioOutput` 竞态已解） |
 | `Smart_Player.pro` 是否彻底下线 | 待决定（当前保留以备回滚） |
-| `build/` `debug/` `release/` 等旧目录已被删除但 git 仍跟踪为 D（deleted） | 提交本次变更后即从 git 历史中清除 |
 
 ---
 
@@ -307,4 +238,6 @@ $ cmake --build build-cmake
 
 | 日期 | 提交 | 说明 |
 |------|------|------|
-| 2026-06-27 | （本次） | qmake → CMake 迁移完成；移除 translator/ 模块；目录整理 |
+| 2026-06-28 | （未提交） | Windows 全屏修复（QWindowsWindow + WS_BORDER）；SettingDialog / SummarySettingsDialog / SummaryPanel 主题重做；seek 溢出与切视频音量/倍速 bug 修复；新增 tools/make_check_icon.py + 6 个图标资源 |
+| 2026-06-27 | `a8f39c7` | 合并 MVVM 阶段 3-5 + 内存泄漏修复；新增 Settings/Summary/Transcript 三个 ViewModel |
+| 2026-06-27 | `4e93594` | 迁移到 CMake 并重构目录结构（qmake→CMake，源码统一放 `src/`） |

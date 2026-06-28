@@ -114,7 +114,6 @@ void VideoConverter::closeInternal() {
     outSpec_ = {};
 }
 
-// 计算缓冲区大小
 int VideoConverter::calcBufferSize(const VideoSpec &spec) {
     return av_image_get_buffer_size(spec.pixFmt, spec.width, spec.height, 1);
 }

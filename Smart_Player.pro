@@ -2,6 +2,10 @@ QT += core gui opengl openglwidgets concurrent network
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
+# Windows + OpenGL 全屏修复需要用到 QNativeInterface::Private::QWindowsWindow，
+# 这是 Qt 私有接口，仅在 Windows 下需要。
+win32: QT += gui-private
+
 CONFIG += c++17
 # CONFIG += debug
 

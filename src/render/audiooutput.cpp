@@ -215,10 +215,12 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
             }
 
             audio_buf_index_ = 0;
-{
-                QMutexLocker locker(&mutex_);
-                audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
-            }
+            // {
+            //     QMutexLocker locker(&mutex_);
+            //     audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
+            // }
+            audio_clock_us_ = av_rescale_q(frame->pts, audio_timebase_, {1, 1000000});
+            //qDebug() << "audio pts : " << audio_clock_us_;
             sync_clock_->set_audio_clock(audio_clock_us_);
 
 
@@ -231,7 +233,6 @@ int AudioOutput::resampleFrameToBuffer(uint8_t* stream, int len)
         }
         memcpy(stream, audio_buf_ + audio_buf_index_, copy_len);
 
-        // 音量调节
         applyVolume(stream, copy_len);
 
         stream += copy_len;
@@ -246,21 +247,17 @@ void AudioOutput::applyVolume(uint8_t* data, int len) {
     QMutexLocker locker(&mutex_);
     if (!data || len <= 0) return;
 
-    // 静音：直接填0
     if (mute_) {
         memset(data, 0, len);
         return;
     }
 
-    // 音量系数：0~100 → 0.0~1.0
     float factor = volume_ / 100.0f;
-    if (factor >= 1.0f) return; //
+    if (factor >= 1.0f) return;
 
-    // 16位采样格式：2字节1个采样
     int sample_count = len / 2;
     int16_t* samples = (int16_t*)data;
 
-    // 逐采样缩放，防止溢出
     for (int i = 0; i < sample_count; i++) {
         samples[i] = static_cast<int16_t>(samples[i] * factor);
     }

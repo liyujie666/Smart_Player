@@ -23,6 +23,10 @@
 #include <QMenu>
 #include <QMenuBar>
 
+#ifdef Q_OS_WIN
+#  include <windows.h>
+#endif
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -36,6 +40,10 @@ MainWindow::MainWindow(QWidget *parent)
     ui->controlBarContainer->installEventFilter(this);
     ui->videoWidget->setMouseTracking(true);
     ui->controlBarContainer->setMouseTracking(true);
+    // 全屏模式下：fileList / playerPage 的 Resize/Show/Hide 也需要 eventFilter 监听，
+    // 才能在打开/关闭文件列表时同步重定位 controlBarContainer。
+    ui->fileList->installEventFilter(this);
+    ui->playerPage->installEventFilter(this);
     setContentsMargins(0, 0, 0, 0);
     settingdialog = new settingDialog(this);
     popMenu = new QMenu(this);
@@ -215,10 +223,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    //释放线程
     player_->stop();
     preview_player_->stop();
-    //释放资源
     // player_ 的 parent 是 this，随 QObject 树自动析构，不需手动 delete
     // preview_ 的 parent 是 previewContainer_，随 ui 析构自动释放，不需手动 delete
     delete preview_player_;
@@ -365,7 +371,8 @@ void MainWindow::onVideoSizeModeChanged(int mode)
 void MainWindow::onSliderClicked(VideoSlider *slider)
 {
     qDebug() << "Slider value is " << slider->value();
-    player_->seek(slider->value() * 1000000);
+    // 注意：value() 返回 int，直接 * 1000000 会按 int 溢出（> ~33 分钟后变负数）
+    player_->seek(qint64(slider->value()) * 1000000);
 }
 
 void MainWindow::seekRelative(int seconds)
@@ -488,7 +495,6 @@ void MainWindow::on_preVideoBtn_clicked()
         QMessageBox::information(nullptr, "当前列表为空", "当前列表为空，无法切换上一个视频！", QMessageBox::Yes);
         return;
     }
-    //先关闭
     ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::None);
     if (player_->state() == PlayerViewModel::Running) {
         player_->stop();
@@ -505,7 +511,6 @@ void MainWindow::on_nextVideoBtn_clicked()
         QMessageBox::information(nullptr, "当前列表为空", "当前列表为空，无法切换下一个视频！", QMessageBox::Yes);
         return;
     }
-    //先关闭
     ui->videoWidget->setRenderSource(OpenGLRenderer::RenderSource::None);
     if (player_->state() == PlayerViewModel::Running) {
         player_->stop();
@@ -552,7 +557,7 @@ void MainWindow::on_volumeBtn_clicked()
 
 void MainWindow::on_openListBtn_clicked()
 {
-    if(!ui->fileList->isHidden()){ //视频列表为打开状态
+    if(!ui->fileList->isHidden()){
         closeFileList();
     }else{      
         openFileList();
@@ -574,7 +579,7 @@ void MainWindow::on_addFileBtn_clicked()
                                                     "/home", //初始路径
                                                     "多媒体文件 (*.mp4 *.avi *.mkv *.mp3 *.aac *.mov *.ts)"
                                                     );
-    if(filePath.isEmpty()) return;//没有成功打开文件
+    if(filePath.isEmpty()) return;
 
     bool wasEmpty = playlist_->isEmpty();
     addToFileList(filePath);
@@ -884,6 +889,29 @@ void MainWindow::exitFullScreenMode()
     ui->controlBarContainer->setStyleSheet(originalControlBarStyle);
 
     showControlBarAndCursor();
+}
+
+bool MainWindow::event(QEvent *e)
+{
+#ifdef Q_OS_WIN
+    // Windows DWM 限制：当窗口处于全屏状态且主窗口是 OpenGL 表面时
+    // （videoWidget 是 QOpenGLWidget，进入 showFullScreen 后整个 QMainWindow
+    // 都成为 OpenGL surface），其它顶层窗口（QComboBox 下拉、Qt::Popup 窗口、
+    // 菜单/对话框）无法被正确合成到主窗口之上，导致全屏下点击倍速 combobox 不
+    // 弹出、AI 字幕 SubtitlePopup 不显示等问题。
+    //
+    // 官方解决方案：给全屏窗口的 HWND 加上 WS_BORDER 标志（即使全屏也保留 1 像素
+    // 边框），让 DWM 把主窗口识别为普通窗口，从而允许 popup 之类顶层窗口正确叠加。
+    // 见：https://doc.qt.io/qt-6/windows-issues.html#fullscreen-opengl-based-windows
+    if (e->type() == QEvent::WinIdChange) {
+        if (windowHandle()) {
+            HWND hwnd = reinterpret_cast<HWND>(windowHandle()->winId());
+            SetWindowLongPtr(hwnd, GWL_STYLE,
+                             GetWindowLongPtr(hwnd, GWL_STYLE) | WS_BORDER);
+        }
+    }
+#endif
+    return QMainWindow::event(e);
 }
 
 void MainWindow::centerLoadingLabel()
@@ -1265,8 +1293,8 @@ void MainWindow::initPreviewWindow()
 void MainWindow::initControlbarPresent()
 {
     hideCursorTimer = new QTimer(this);
-    hideCursorTimer->setSingleShot(true);   // 单次触发
-    hideCursorTimer->setInterval(5000);     // 3秒超时
+    hideCursorTimer->setSingleShot(true);
+    hideCursorTimer->setInterval(5000);
     connect(hideCursorTimer, &QTimer::timeout, this, &MainWindow::hideControlBarAndCursor);
     isFullScreenMode = false;
 
@@ -1354,7 +1382,9 @@ void MainWindow::on_progressSlider_sliderPressed()
 void MainWindow::on_progressSlider_sliderReleased()
 {
     is_seeking = false;
-    player_->seek(ui->progressSlider->value() * 1000000);
+    // 注意：value() 返回 int，直接 * 1000000 会按 int 溢出（> ~33 分钟后变负数），
+    // 导致 PlayerCore::seek 内 pos_us < 0 直接 return。显式转 qint64 避免溢出。
+    player_->seek(qint64(ui->progressSlider->value()) * 1000000);
 }
 
 void MainWindow::on_screenshotStatus(const QString &path, bool isOk)
@@ -1389,7 +1419,6 @@ void MainWindow::showControlBarAndCursor()
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
-
     if (!isFullScreenMode) {
         return QMainWindow::eventFilter(obj, event);
     }
@@ -1411,6 +1440,18 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     if (obj == ui->videoWidget && event->type() == QEvent::MouseMove) {
         hideCursorTimer->stop();
         showControlBarAndCursor();
+    }
+
+    // 全屏时，fileList 或右侧 dock 显隐 / 大小变化后，同步重定位 controlBarContainer
+    // 注意：dock show/hide 时 QMainWindow 的 layout 是异步更新的，
+    // 必须 singleShot(0) 把重定位推迟到事件循环下一轮，否则取到的是旧 centralwidget 宽度。
+    QEvent::Type evType = event->type();
+    if (isFullScreenMode
+        && (obj == ui->fileList || obj == ui->playerPage || obj == m_rightDock)
+        && (evType == QEvent::Resize || evType == QEvent::Show || evType == QEvent::Hide)) {
+        QTimer::singleShot(0, this, [this]() {
+            if (isFullScreenMode) repositionControlBarFullScreen();
+        });
     }
 
     return QMainWindow::eventFilter(obj, event);
@@ -1511,6 +1552,7 @@ void MainWindow::setupRightPanel() {
     m_rightDock->setTitleBarWidget(new QWidget());  // 用空 widget 顶掉标题栏
     m_rightDock->setWidget(m_rightTab);
     addDockWidget(Qt::RightDockWidgetArea, m_rightDock);
+    m_rightDock->installEventFilter(this);  // 全屏下监听 dock 显隐后同步控制栏宽度
     m_rightDock->hide();
 
     // SummaryPanel 数据绑定（通过 ViewModel）

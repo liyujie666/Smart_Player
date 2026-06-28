@@ -26,7 +26,6 @@ int AudioFilter::init(int sampleRate, AVSampleFormat sampleFmt, int chs) {
     sampleRate_ = sampleRate;
     sampleFmt_ = sampleFmt;
 
-    // 初始化通道布局
     av_channel_layout_uninit(&chLayout_);
     switch (chs) {
     case 1: av_channel_layout_from_string(&chLayout_, "mono"); break;
@@ -36,7 +35,6 @@ int AudioFilter::init(int sampleRate, AVSampleFormat sampleFmt, int chs) {
     default: av_channel_layout_default(&chLayout_, chs); break;
     }
 
-    // 获取通道布局字符串
     char buf[64] = {0};
     int ret = av_channel_layout_describe(&chLayout_, buf, sizeof(buf));
     if (ret < 0) {
@@ -45,7 +43,6 @@ int AudioFilter::init(int sampleRate, AVSampleFormat sampleFmt, int chs) {
     }
     chLayoutStr_ = buf;
 
-    // 创建所有倍速滤镜
     if (createSingleFilter(static_cast<int>(SpeedIndex::Speed_0_5), 0.5) < 0) {
         closeInternal();
         return -1;
@@ -96,7 +93,6 @@ int AudioFilter::createSingleFilter(int index, double speed) {
         return -1;
     }
 
-    // 1. atempo倍速滤镜
     const AVFilter *atempoFilter = avfilter_get_by_name("atempo");
     AVFilterContext *atempoCtx = avfilter_graph_alloc_filter(g.graph, atempoFilter, "atempo");
     AVDictionary *dict = nullptr;
@@ -110,7 +106,6 @@ int AudioFilter::createSingleFilter(int index, double speed) {
     }
     av_dict_free(&dict);
 
-    // 添加aformat滤镜，强制输出FLTP
     const AVFilter *aformatFilter = avfilter_get_by_name("aformat");
     AVFilterContext *aformatCtx = avfilter_graph_alloc_filter(g.graph, aformatFilter, "aformat");
     if (avfilter_init_str(aformatCtx, aformatArgs.c_str()) < 0) {
@@ -120,7 +115,6 @@ int AudioFilter::createSingleFilter(int index, double speed) {
         return -1;
     }
 
-    // 输出sink
     const AVFilter *sinkFilter = avfilter_get_by_name("abuffersink");
     g.sinkCtx = avfilter_graph_alloc_filter(g.graph, sinkFilter, "sink");
     if (!g.sinkCtx || avfilter_init_dict(g.sinkCtx, nullptr) < 0) {
@@ -130,7 +124,6 @@ int AudioFilter::createSingleFilter(int index, double speed) {
         return -1;
     }
 
-    // 链接滤镜：src → atempo → aformat → sink
     if (avfilter_link(g.srcCtx,   0, atempoCtx,   0) != 0 ||
         avfilter_link(atempoCtx,  0, aformatCtx, 0) != 0 ||
         avfilter_link(aformatCtx, 0, g.sinkCtx,  0) != 0) {
@@ -140,7 +133,6 @@ int AudioFilter::createSingleFilter(int index, double speed) {
         return -1;
     }
 
-    // 配置滤镜图
     if (avfilter_graph_config(g.graph, nullptr) < 0) {
         qDebug() << "avfilter_graph_config failed";
         avfilter_graph_free(&g.graph);
@@ -208,7 +200,6 @@ void AudioFilter::flush() {
     FilterGroup &g = groups_[idx];
     if (!g.srcCtx || !g.sinkCtx) return;
 
-    // 刷新滤镜缓冲区
     int rc = av_buffersrc_add_frame(g.srcCtx, nullptr);
     if (rc < 0) {
         char errbuf[AV_ERROR_MAX_STRING_SIZE] = {0};
@@ -216,7 +207,6 @@ void AudioFilter::flush() {
         qDebug() << "AudioFilter::flush av_buffersrc_add_frame failed:" << errbuf;
     }
 
-    // 安全读取剩余帧（最多10次，防止死循环）
     AVFrame *frame = av_frame_alloc();
     if (frame) {
         for (int i = 0; i < 10; ++i) {

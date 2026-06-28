@@ -59,5 +59,11 @@
         <file>SmartPlayer-icon/setting_dark.png</file>
         <file>SmartPlayer-icon/arrow_down_dark.png</file>
         <file>SmartPlayer-icon/arrow_right_dark.png</file>
+        <file>SmartPlayer-icon/arrow_down_grey.png</file>
+        <file>SmartPlayer-icon/arrow_down_light.png</file>
+        <file>SmartPlayer-icon/arrow_up_grey.png</file>
+        <file>SmartPlayer-icon/arrow_up_light.png</file>
+        <file>SmartPlayer-icon/check_skyblue.png</file>
+        <file>SmartPlayer-icon/check_white.png</file>
     </qresource>
 </RCC>

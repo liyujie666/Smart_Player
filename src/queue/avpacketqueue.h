@@ -2,7 +2,7 @@
 #define AVPACKETQUEUE_H
 #include "avqueue.h"
 
-#ifdef __cplusplus  ///
+#ifdef __cplusplus
 extern "C"
 {
 #include "libavcodec/avcodec.h"

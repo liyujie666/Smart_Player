@@ -6,653 +6,851 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>350</width>
-    <height>500</height>
+    <width>460</width>
+    <height>620</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>350</width>
-    <height>500</height>
+    <width>460</width>
+    <height>620</height>
    </size>
   </property>
   <property name="maximumSize">
    <size>
-    <width>350</width>
-    <height>500</height>
+    <width>520</width>
+    <height>800</height>
    </size>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>播放器设置</string>
   </property>
   <property name="styleSheet">
-   <string notr="true">QRadioButton{
-	font-size:13px;
+   <string notr="true">QDialog {
+    background-color: #FFFFFF;
+    font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif;
+    color: #1F2937;
 }
-QLabel { 
-font-size:13px;
- }
-QPushButton{
-	max-height:17px;
-	max-width:50px;
-	min-height:17px;
-	min-width:50px;
-	border:none;
-background-color: transparent;
-border-radius:5px;
+
+QGroupBox {
+    background-color: transparent;
+    border: 1px solid #FBCFE8;
+    border-radius: 10px;
+    margin-top: 14px;
+    padding: 14px 14px 12px 14px;
+    font-weight: 600;
+    color: #1F2937;
+    font-size: 13px;
 }
-QComboBox{
-	font-size:13px;
-	min-width:30px;
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 14px;
+    padding: 0 8px;
+    background-color: #FFFFFF;
+    color: #1F2937;
+}
+
+QLabel {
+    color: #4B5563;
+    font-size: 13px;
+    background: transparent;
+}
+
+QRadioButton {
+    color: #374151;
+    font-size: 13px;
+    spacing: 6px;
+    padding: 2px 4px;
+}
+QRadioButton::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #D1D5DB;
+    border-radius: 8px;
+    background-color: #FFFFFF;
+    subcontrol-origin: padding;
+}
+QRadioButton::indicator:hover { border-color: #F472B6; }
+QRadioButton::indicator:checked {
+    border-color: #DB2777;
+    background-color: #DB2777;
+    image: none;
+}
+QRadioButton::indicator:checked:!enabled {
+    border-color: #D1D5DB;
+    background-color: #D1D5DB;
+}
+QRadioButton:disabled { color: #9CA3AF; }
+
+QCheckBox {
+    color: #374151;
+    font-size: 13px;
+    spacing: 6px;
+    padding: 2px 0;
+}
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #D1D5DB;
+    border-radius: 8px;
+    background-color: #FFFFFF;
+    subcontrol-origin: padding;
+}
+QCheckBox::indicator:hover { border-color: #F472B6; }
+QCheckBox::indicator:checked {
+    border-color: #DB2777;
+    background-color: #DB2777;
+    image: none;
+}
+QCheckBox:disabled { color: #9CA3AF; }
+
+QComboBox {
+    background-color: #FFFFFF;
+    color: #1F2937;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 5px 28px 5px 10px;
+    font-size: 13px;
+    min-height: 18px;
+    selection-background-color: #FDF2F8;
+}
+QComboBox:hover { border-color: #F472B6; }
+QComboBox:focus { border-color: #DB2777; }
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border: none;
+    background: transparent;
+}
+QComboBox::down-arrow {
+    image: url(:/SmartPlayer-icon/arrow_down_grey.png);
+    width: 12px;
+    height: 8px;
+    margin-right: 6px;
 }
 QComboBox QAbstractItemView {
-    color: white;
+    background-color: #FFFFFF;
+    color: #1F2937;
+    border: 1px solid #FBCFE8;
+    border-radius: 6px;
+    padding: 4px;
+    selection-background-color: #FDF2F8;
+    selection-color: #DB2777;
+    outline: 0;
 }
-QLineEdit{
-font-size:12px;
-}</string>
+QComboBox QAbstractItemView::item {
+    padding: 6px 10px;
+    border-radius: 4px;
+    min-height: 18px;
+}
+QComboBox QAbstractItemView::item:hover {
+    background-color: #FCE7F3;
+}
+
+QLineEdit {
+    background-color: #FFFFFF;
+    color: #1F2937;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 12px;
+    selection-background-color: #FBCFE8;
+    selection-color: #1F2937;
+}
+QLineEdit:hover { border-color: #F472B6; }
+QLineEdit:focus { border-color: #DB2777; }
+QLineEdit:read-only {
+    background-color: #FFF5F7;
+    color: #6B7280;
+}
+
+QSlider::groove:horizontal {
+    background-color: #FBCFE8;
+    height: 4px;
+    border-radius: 2px;
+}
+QSlider::sub-page:horizontal {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 #EC4899, stop:1 #F472B6);
+    border-radius: 2px;
+}
+QSlider::add-page:horizontal {
+    background-color: #FBCFE8;
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background-color: #FFFFFF;
+    border: 2px solid #DB2777;
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    border-radius: 7px;
+}
+QSlider::handle:horizontal:hover {
+    border-color: #BE185D;
+    background-color: #FDF2F8;
+}
+QSlider::handle:horizontal:pressed {
+    background-color: #DB2777;
+    border-color: #BE185D;
+}
+
+QPushButton {
+    background-color: #FFFFFF;
+    color: #4B5563;
+    border: 1px solid #E5E7EB;
+    border-radius: 6px;
+    padding: 5px 14px;
+    font-size: 12px;
+    min-height: 16px;
+}
+QPushButton:hover {
+    background-color: #FFF5F7;
+    border-color: #F472B6;
+    color: #DB2777;
+}
+QPushButton:pressed {
+    background-color: #FCE7F3;
+}
+QPushButton:disabled {
+    background-color: #F9FAFB;
+    color: #9CA3AF;
+    border-color: #E5E7EB;
+}
+
+QPushButton#confirmBtn {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 #EC4899, stop:1 #F472B6);
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 24px;
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 80px;
+    min-height: 18px;
+}
+QPushButton#confirmBtn:hover {
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,
+        stop:0 #DB2777, stop:1 #BE185D);
+}
+QPushButton#confirmBtn:pressed {
+    background: #BE185D;
+}
+
+QPushButton#cancelBtn {
+    background-color: #FFFFFF;
+    color: #6B7280;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 7px 24px;
+    font-size: 13px;
+    min-width: 80px;
+    min-height: 18px;
+}
+QPushButton#cancelBtn:hover {
+    background-color: #F9FAFB;
+    color: #1F2937;
+    border-color: #D1D5DB;
+}
+QPushButton#cancelBtn:pressed {
+    background-color: #F3F4F6;
+}
+
+QPushButton#resetConfigBtn {
+    background-color: transparent;
+    color: #EC4899;
+    border: 1px solid #FBCFE8;
+    border-radius: 6px;
+    padding: 4px 12px;
+    font-size: 12px;
+    min-height: 16px;
+}
+QPushButton#resetConfigBtn:hover {
+    background-color: #FDF2F8;
+    border-color: #F472B6;
+    color: #DB2777;
+}
+QPushButton#resetConfigBtn:pressed {
+    background-color: #FCE7F3;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 8px;
+    margin: 4px 2px 4px 0;
+    border: none;
+}
+QScrollBar::handle:vertical {
+    background: #FBCFE8;
+    min-height: 40px;
+    border-radius: 4px;
+}
+QScrollBar::handle:vertical:hover { background: #F472B6; }
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    background: none; border: none; height: 0;
+}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical { background: none; border: none; }
+</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout">
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout">
-     <item>
-      <widget class="QLabel" name="label">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>加速方式：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QRadioButton" name="softwareRadio">
-       <property name="styleSheet">
-        <string notr="true">QRadioButton{
-	font-size:13px;
-}</string>
-       </property>
-       <property name="text">
-        <string>软件加速</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QRadioButton" name="hardwareRadio">
-       <property name="styleSheet">
-        <string notr="true">QRadioButton{
-	font-size:13px;
-}</string>
-       </property>
-       <property name="text">
-        <string>硬件加速</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer_4">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>20</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_2">
-     <item>
-      <widget class="QLabel" name="label_2">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>指定解码格式：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QComboBox" name="decodeCombox">
-       <property name="styleSheet">
-        <string notr="true">QComboBox{
-	font-size:13px;
-	min-width:30px;
-}
-QComboBox QAbstractItemView::item{
-color:black;
-}</string>
-       </property>
-       <item>
-        <property name="text">
-         <string>默认(推荐)</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>h264</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>h264_cuvid</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>hevc</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>hevc_cuvid</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>mpeg4</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>vp9</string>
-        </property>
-       </item>
-       <item>
-        <property name="text">
-         <string>av1</string>
-        </property>
-       </item>
-      </widget>
-     </item>
-     <item>
-      <spacer name="horizontalSpacer">
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer_3">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>18</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_3">
-     <item>
-      <widget class="QLabel" name="label_3">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>  亮度：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSlider" name="lightSlider">
-       <property name="styleSheet">
-        <string notr="true">QSlider::groove:horizontal {
-    background-color: #ccc;
-    height: 3px;
-    border-radius: 2px;
-}
+  <layout class="QVBoxLayout" name="rootLayout">
+   <property name="leftMargin">
+    <number>16</number>
+   </property>
+   <property name="topMargin">
+    <number>16</number>
+   </property>
+   <property name="rightMargin">
+    <number>16</number>
+   </property>
+   <property name="bottomMargin">
+    <number>16</number>
+   </property>
+   <property name="spacing">
+    <number>10</number>
+   </property>
 
-QSlider::handle:horizontal {
-    background-color:rgb(66, 148, 255);
-    width: 12px;
-    height: 12px;
-    margin: -4px 0; /* 使手柄居中 */
-    border-radius: 5px;
-}
-QSlider::sub-page:horizontal {
-    background-color: rgb(66, 148, 255); /* 已滑动部分的颜色 */
-}</string>
-       </property>
-       <property name="value">
-        <number>50</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="lightLabel">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>50</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
    <item>
-    <spacer name="verticalSpacer_2">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
+    <widget class="QGroupBox" name="decodeGroup">
+     <property name="title">
+      <string>加速与解码</string>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>21</height>
-      </size>
-     </property>
-    </spacer>
+     <layout class="QVBoxLayout" name="decodeLayout">
+      <property name="leftMargin">
+       <number>4</number>
+      </property>
+      <property name="topMargin">
+       <number>4</number>
+      </property>
+      <property name="rightMargin">
+       <number>4</number>
+      </property>
+      <property name="bottomMargin">
+       <number>4</number>
+      </property>
+      <property name="spacing">
+       <number>10</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="hardwareRow">
+        <property name="spacing">
+         <number>14</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>加速方式</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="softwareRadio">
+          <property name="text">
+           <string>软件加速</string>
+          </property>
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="hardwareRadio">
+          <property name="text">
+           <string>硬件加速</string>
+          </property>
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer_hw">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="decoderRow">
+        <property name="spacing">
+         <number>14</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>指定解码格式</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="decodeCombox">
+          <property name="minimumSize">
+           <size>
+            <width>160</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+          <item>
+           <property name="text">
+            <string>默认(推荐)</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>h264</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>h264_cuvid</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>hevc</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>hevc_cuvid</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>mpeg4</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>vp9</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>av1</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item>
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
    </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_7">
-     <item>
-      <widget class="QLabel" name="contrastLabel1">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>对比度：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSlider" name="contrastSlider">
-       <property name="styleSheet">
-        <string notr="true">QSlider::groove:horizontal {
-    background-color: #ccc;
-    height: 3px;
-    border-radius: 2px;
-}
 
-QSlider::handle:horizontal {
-    background-color:rgb(66, 148, 255);
-    width: 12px;
-    height: 12px;
-    margin: -4px 0; /* 使手柄居中 */
-    border-radius: 5px;
-}
-QSlider::sub-page:horizontal {
-    background-color: rgb(66, 148, 255); /* 已滑动部分的颜色 */
-}</string>
-       </property>
-       <property name="value">
-        <number>50</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="contrastLabel">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>50</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
    <item>
-    <spacer name="verticalSpacer_5">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
+    <widget class="QGroupBox" name="imageGroup">
+     <property name="title">
+      <string>画面调节</string>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>20</height>
-      </size>
-     </property>
-    </spacer>
+     <layout class="QVBoxLayout" name="imageLayout">
+      <property name="leftMargin">
+       <number>4</number>
+      </property>
+      <property name="topMargin">
+       <number>10</number>
+      </property>
+      <property name="rightMargin">
+       <number>4</number>
+      </property>
+      <property name="bottomMargin">
+       <number>4</number>
+      </property>
+      <property name="spacing">
+       <number>8</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="lightRow">
+        <property name="spacing">
+         <number>12</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>亮度</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSlider" name="lightSlider">
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+          <property name="value">
+           <number>50</number>
+          </property>
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lightLabel">
+          <property name="text">
+           <string>50</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>36</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="contrastRow">
+        <property name="spacing">
+         <number>12</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="contrastLabel1">
+          <property name="text">
+           <string>对比度</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSlider" name="contrastSlider">
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+          <property name="value">
+           <number>50</number>
+          </property>
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="contrastLabel">
+          <property name="text">
+           <string>50</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>36</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="baoheRow">
+        <property name="spacing">
+         <number>12</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="baoheLabel1">
+          <property name="text">
+           <string>饱和度</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSlider" name="baoheSlider">
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+          <property name="value">
+           <number>50</number>
+          </property>
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="baoheLabel">
+          <property name="text">
+           <string>50</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>36</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignRight|Qt::AlignVCenter</set>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="resetRow">
+        <item>
+         <spacer name="horizontalSpacer_reset">
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="resetConfigBtn">
+          <property name="text">
+           <string>重置调节</string>
+          </property>
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
    </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_8">
-     <item>
-      <widget class="QLabel" name="baoheLabel1">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>饱和度：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QSlider" name="baoheSlider">
-       <property name="styleSheet">
-        <string notr="true">QSlider::groove:horizontal {
-    background-color: #ccc;
-    height: 3px;
-    border-radius: 2px;
-}
 
-QSlider::handle:horizontal {
-    background-color:rgb(66, 148, 255);
-    width: 12px;
-    height: 12px;
-    margin: -4px 0; /* 使手柄居中 */
-    border-radius: 5px;
-}
-QSlider::sub-page:horizontal {
-    background-color: rgb(66, 148, 255); /* 已滑动部分的颜色 */
-}</string>
-       </property>
-       <property name="value">
-        <number>50</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLabel" name="baoheLabel">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>50</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_10">
+    <widget class="QGroupBox" name="sizeGroup">
+     <property name="title">
+      <string>画面尺寸</string>
+     </property>
+     <layout class="QHBoxLayout" name="sizeLayout">
+      <property name="spacing">
+       <number>14</number>
+      </property>
+      <item>
+       <widget class="QRadioButton" name="defaultSize">
+        <property name="text">
+         <string>默认</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+        <property name="cursor">
+         <cursorShape>PointingHandCursor</cursorShape>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="expandSize">
+        <property name="text">
+         <string>缩放填充</string>
+        </property>
+        <property name="cursor">
+         <cursorShape>PointingHandCursor</cursorShape>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacer_size">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
+   </item>
+
+   <item>
+    <widget class="QGroupBox" name="pathGroup">
+     <property name="title">
+      <string>路径设置</string>
+     </property>
+     <layout class="QVBoxLayout" name="pathLayout">
+      <property name="spacing">
+       <number>10</number>
+      </property>
+      <item>
+       <layout class="QHBoxLayout" name="screenshotPathRow">
+        <property name="spacing">
+         <number>8</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label_6">
+          <property name="text">
+           <string>截图路径</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="saveFilePath">
+          <property name="minimumSize">
+           <size>
+            <width>200</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>400</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>请选择截图保存文件夹</string>
+          </property>
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="selectPathBtn">
+          <property name="text">
+           <string>选择</string>
+          </property>
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="modelPathRow">
+        <property name="spacing">
+         <number>8</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="label_7">
+          <property name="text">
+           <string>模型路径</string>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="modelPathLineEdit">
+          <property name="minimumSize">
+           <size>
+            <width>200</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>400</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="placeholderText">
+           <string>请选择模型文件(*.bin)</string>
+          </property>
+          <property name="readOnly">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="uploadModelPathBtn">
+          <property name="text">
+           <string>上传</string>
+          </property>
+          <property name="cursor">
+           <cursorShape>PointingHandCursor</cursorShape>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+
+   <item>
+    <layout class="QHBoxLayout" name="bottomBtnRow">
      <property name="spacing">
-      <number>0</number>
+      <number>10</number>
      </property>
-     <item>
-      <spacer name="horizontalSpacer_3">
-       <property name="orientation">
-        <enum>Qt::Orientation::Horizontal</enum>
-       </property>
-       <property name="sizeHint" stdset="0">
-        <size>
-         <width>40</width>
-         <height>20</height>
-        </size>
-       </property>
-      </spacer>
-     </item>
-     <item>
-      <widget class="QPushButton" name="resetConfigBtn">
-       <property name="styleSheet">
-        <string notr="true">QPushButton{
-	max-height:17px;
-	max-width:50px;
-	min-height:17px;
-	min-width:50px;
-	border:none;
-background-color: transparent;
-border-radius:5px;
-}</string>
-       </property>
-       <property name="text">
-        <string>重置</string>
-       </property>
-       <property name="icon">
-        <iconset resource="../Resource.qrc">
-         <normaloff>:/SmartPlayer-icon/reset.png</normaloff>:/SmartPlayer-icon/reset.png</iconset>
-       </property>
-       <property name="iconSize">
-        <size>
-         <width>17</width>
-         <height>17</height>
-        </size>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_4">
-     <item>
-      <widget class="QLabel" name="label_5">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>画面尺寸：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QRadioButton" name="defaultSize">
-       <property name="styleSheet">
-        <string notr="true">QRadioButton
-{
-font-size:13px;
-}
-
-</string>
-       </property>
-       <property name="text">
-        <string>默认</string>
-       </property>
-       <property name="checked">
-        <bool>true</bool>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QRadioButton" name="expandSize">
-       <property name="styleSheet">
-        <string notr="true">QRadioButton
-{
-font-size:13px;
-}
-</string>
-       </property>
-       <property name="text">
-        <string>缩放填充</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>28</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_5">
-     <item>
-      <widget class="QLabel" name="label_6">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>截图路径：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLineEdit" name="saveFilePath">
-       <property name="minimumSize">
-        <size>
-         <width>200</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>400</width>
-         <height>16777215</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">QLineEdit{
-font-size:12px;
-}</string>
-       </property>
-       <property name="text">
-        <string/>
-       </property>
-       <property name="placeholderText">
-        <string/>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="selectPathBtn">
-       <property name="styleSheet">
-        <string notr="true">QPushButton{
-	font-size:13px;
-	max-width:45px;
-	min-width:45px;
-	border-radius:5px;
-	border:white;
-}</string>
-       </property>
-       <property name="text">
-        <string>自定义</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer_7">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>17</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_6">
-     <item>
-      <widget class="QLabel" name="label_7">
-       <property name="styleSheet">
-        <string notr="true">QLabel { 
-font-size:13px;
- }</string>
-       </property>
-       <property name="text">
-        <string>模型路径：</string>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QLineEdit" name="modelPathLineEdit">
-       <property name="minimumSize">
-        <size>
-         <width>200</width>
-         <height>0</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>400</width>
-         <height>16777215</height>
-        </size>
-       </property>
-       <property name="styleSheet">
-        <string notr="true">QLineEdit{
-font-size:12px;
-}</string>
-       </property>
-       <property name="text">
-        <string/>
-       </property>
-       <property name="placeholderText">
-        <string/>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <widget class="QPushButton" name="uploadModelPathBtn">
-       <property name="styleSheet">
-        <string notr="true">QPushButton{
-	font-size:13px;
-	max-width:45px;
-	min-width:45px;
-	border-radius:5px;
-	border:white;
-}</string>
-       </property>
-       <property name="text">
-        <string>上传</string>
-       </property>
-      </widget>
-     </item>
-    </layout>
-   </item>
-   <item>
-    <spacer name="verticalSpacer_8">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>18</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
-   <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_9">
      <item>
       <spacer name="horizontalSpacer_2">
        <property name="orientation">
@@ -668,54 +866,30 @@ font-size:12px;
      </item>
      <item>
       <widget class="QPushButton" name="cancelBtn">
-       <property name="styleSheet">
-        <string notr="true">QPushButton {
-    background-color: #f0f0f0;
-    color: #333333;
-    border: none;
-    border-radius: 4px;
-    padding: 4px 16px; 
-    font-size: 14px;
-}
-QPushButton:hover {
-    background-color: #ffffff;
-}
-QPushButton:pressed {
-    background-color: #dcdcdc;
-}
-</string>
-       </property>
        <property name="text">
         <string>取消</string>
+       </property>
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="confirmBtn">
-       <property name="styleSheet">
-        <string notr="true">QPushButton {
-    background-color: #e8589e;
-    color: #ffffff;
-    border: none;
-    border-radius: 6px;
-    padding: 4px 16px;
-    font-size: 14px;
-}
-QPushButton:hover {
-    background-color: #f06cae;
-}
-QPushButton:pressed {
-    background-color: #d14a8a;
-}
-</string>
-       </property>
        <property name="text">
-        <string>确定</string>
+        <string>保存设置</string>
+       </property>
+       <property name="cursor">
+        <cursorShape>PointingHandCursor</cursorShape>
+       </property>
+       <property name="default">
+        <bool>true</bool>
        </property>
       </widget>
      </item>
     </layout>
    </item>
+
   </layout>
  </widget>
  <resources>

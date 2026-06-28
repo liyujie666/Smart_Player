@@ -23,6 +23,12 @@ find_package(Qt6 COMPONENTS
     REQUIRED
 )
 
+# Windows + OpenGL 全屏修复需要用到 QNativeInterface::Private::QWindowsWindow
+# （位于 qplatformwindow_p.h），它是 Qt 私有接口。Qt 6 通过 GuiPrivate target 暴露。
+if(WIN32)
+    find_package(Qt6 COMPONENTS GuiPrivate REQUIRED)
+endif()
+
 # ========== 项目源文件目录 ==========
 set(SRC_DIR       ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set(APP_DIR        ${SRC_DIR}/app)
@@ -165,6 +171,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Svg
     Qt6::SvgWidgets
 )
+
+# Windows + OpenGL 全屏修复：链接 Qt 私有模块以访问 QWindowsWindow 接口
+if(WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE Qt6::GuiPrivate)
+endif()
 
 # ========== 第三方库链接 ==========
 # 使用绝对路径指向 dependencies/lib

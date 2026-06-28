@@ -46,7 +46,6 @@ class SettingsViewModel : public IViewModel {
 public:
     static SettingsViewModel& instance();
 
-    // ===== getter =====
     bool    hardware()           const { return ConfigManager::instance().isHardware(); }
     QString decoderFormat()      const { return ConfigManager::instance().getDecoderFormat(); }
     int     brightness()         const { return ConfigManager::instance().getBrightness(); }
@@ -65,7 +64,6 @@ public:
     bool    summaryCacheEnabled()   const { return ConfigManager::instance().getSummaryCacheEnabled(); }
 
 public slots:
-    // ===== setter =====
     void setHardware(bool v);
     void setDecoderFormat(const QString& f);
     void setBrightness(int v);

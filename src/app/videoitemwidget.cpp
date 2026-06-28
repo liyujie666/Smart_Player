@@ -1,9 +1,11 @@
 #include "videoitemwidget.h"
 #include "ui_videoitemwidget.h"
+#include <QFontMetrics>
+#include <QResizeEvent>
 #include <QPixmap>
 
 VideoItemWidget::VideoItemWidget(const QImage &preview, const QString &name, const QString &duration, QWidget *parent)
-    : QWidget(parent), ui(new Ui::VideoItemWidget)
+    : QWidget(parent), ui(new Ui::VideoItemWidget), m_fullFileName(name)
 {
     ui->setupUi(this);
     setMouseTracking(true);
@@ -15,6 +17,11 @@ VideoItemWidget::VideoItemWidget(const QImage &preview, const QString &name, con
     ui->previewImageLabel->setPixmap(QPixmap::fromImage(preview).scaled(110, 65, Qt::KeepAspectRatio, Qt::SmoothTransformation));
     ui->fileNameLabel->setText(name);
     ui->durationLabel->setText(duration);
+
+    // 长文件名：保留完整名作为 tooltip + 根据宽度省略显示
+    setToolTip(m_fullFileName);
+    ui->fileNameLabel->setToolTip(m_fullFileName);
+    updateFileNameElision();
 }
 
 VideoItemWidget::~VideoItemWidget()
@@ -39,6 +46,29 @@ void VideoItemWidget::leaveEvent(QEvent *event)
 {
     this->setStyleSheet("");  // 恢复默认样式
     QWidget::leaveEvent(event);
+}
+
+void VideoItemWidget::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateFileNameElision();
+}
+
+void VideoItemWidget::updateFileNameElision()
+{
+    if (m_fullFileName.isEmpty()) {
+        return;
+    }
+    const int labelWidth = ui->fileNameLabel->width();
+    if (labelWidth <= 0) {
+        // 控件尚未布局完成，等下次 resizeEvent 再处理
+        return;
+    }
+    const QFontMetrics fm(ui->fileNameLabel->font());
+    const QString elided = fm.elidedText(m_fullFileName, Qt::ElideRight, labelWidth);
+    if (ui->fileNameLabel->text() != elided) {
+        ui->fileNameLabel->setText(elided);
+    }
 }
 
 void VideoItemWidget::updateThumbnail(const QImage &preview)

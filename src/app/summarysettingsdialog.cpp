@@ -16,8 +16,243 @@ SummarySettingsDialog::SummarySettingsDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle(QStringLiteral(u"AI \u603b\u7ed3\u8bbe\u7f6e"));
-    setMinimumWidth(420);
+    setMinimumWidth(480);
     setModal(true);
+
+    // 现代浅色风格,与 SummaryPanel 主题统一
+    setStyleSheet(QStringLiteral(u"\
+QDialog {\
+    background-color: #FFFFFF;\
+    color: #1F2937;\
+    font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif;\
+    font-size: 13px;\
+}\
+QLabel {\
+    color: #4B5563;\
+    background: transparent;\
+    font-size: 13px;\
+}\
+QLabel#cacheSizeLabel {\
+    color: #6B7280;\
+    font-size: 12px;\
+    padding: 2px 4px;\
+}\
+QLineEdit {\
+    background-color: #FFFFFF;\
+    color: #1F2937;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 6px;\
+    padding: 6px 10px;\
+    font-size: 13px;\
+    selection-background-color: #C7D2FE;\
+    selection-color: #1F2937;\
+}\
+QLineEdit:hover { border-color: #818CF8; }\
+QLineEdit:focus { border-color: #6366F1; }\
+QSpinBox {\
+    background-color: #FFFFFF;\
+    color: #1F2937;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 6px;\
+    padding: 5px 8px;\
+    font-size: 13px;\
+    selection-background-color: #C7D2FE;\
+}\
+QSpinBox:hover { border-color: #818CF8; }\
+QSpinBox:focus { border-color: #6366F1; }\
+QSpinBox::up-button, QSpinBox::down-button {\
+    subcontrol-origin: border;\
+    width: 18px;\
+    border: none;\
+    background: transparent;\
+}\
+QSpinBox::up-button:hover, QSpinBox::down-button:hover { background: #F3F4F6; }\
+QSpinBox::up-arrow {\
+    image: url(:/SmartPlayer-icon/arrow_up_grey.png);\
+    width: 12px;\
+    height: 8px;\
+}\
+QSpinBox::down-arrow {\
+    image: url(:/SmartPlayer-icon/arrow_down_grey.png);\
+    width: 12px;\
+    height: 8px;\
+}\
+QComboBox {\
+    background-color: #FFFFFF;\
+    color: #1F2937;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 6px;\
+    padding: 5px 28px 5px 10px;\
+    font-size: 13px;\
+    min-height: 18px;\
+}\
+QComboBox:hover { border-color: #818CF8; }\
+QComboBox:focus { border-color: #6366F1; }\
+QComboBox::drop-down {\
+    subcontrol-origin: padding;\
+    subcontrol-position: top right;\
+    width: 24px;\
+    border: none;\
+    border-image: none;\
+    background: transparent;\
+    background-color: transparent;\
+    image: none;\
+}\
+QComboBox::down-arrow {\
+    image: url(:/SmartPlayer-icon/arrow_down_grey.png);\
+    width: 12px;\
+    height: 8px;\
+    margin-right: 6px;\
+    padding: 0;\
+    border: none;\
+    background: transparent;\
+}\
+QComboBox QAbstractItemView {\
+    background-color: #FFFFFF;\
+    color: #1F2937;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 6px;\
+    padding: 4px;\
+    selection-background-color: #EEF2FF;\
+    selection-color: #4338CA;\
+    outline: 0;\
+}\
+QComboBox QAbstractItemView::item {\
+    padding: 6px 10px;\
+    border-radius: 4px;\
+    min-height: 18px;\
+}\
+QComboBox QAbstractItemView::item:hover { background-color: #F3F4F6; }\
+QToolButton {\
+    background-color: #F3F4F6;\
+    color: #4B5563;\
+    border: 1px solid #E5E7EB;\
+    border-left: none;\
+    border-top-left-radius: 0;\
+    border-bottom-left-radius: 0;\
+    border-top-right-radius: 6px;\
+    border-bottom-right-radius: 6px;\
+    padding: 0 8px;\
+    font-size: 13px;\
+    min-width: 32px;\
+}\
+QToolButton:hover { background-color: #EEF2FF; color: #4338CA; }\
+QToolButton:checked { background-color: #E0E7FF; color: #4338CA; border-color: #C7D2FE; }\
+QCheckBox {\
+    color: #374151;\
+    font-size: 12px;\
+    spacing: 5px;\
+    padding: 1px 0;\
+}\
+QCheckBox::indicator {\
+    width: 14px;\
+    height: 14px;\
+    border: 1.5px solid #D1D5DB;\
+    border-radius: 3px;\
+    background-color: #FFFFFF;\
+}\
+QCheckBox::indicator:hover { border-color: #818CF8; background-color: #EEF2FF; }\
+QCheckBox::indicator:checked {\
+    border-color: #6366F1;\
+    background-color: #6366F1;\
+    image: url(:/SmartPlayer-icon/check_white.png);\
+}\
+QCheckBox::indicator:checked:hover { background-color: #818CF8; border-color: #818CF8; }\
+QCheckBox::indicator:disabled { border-color: #E5E7EB; background-color: #F9FAFB; }\
+QCheckBox:disabled { color: #9CA3AF; }\
+QGroupBox {\
+    background-color: #F9FAFB;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 10px;\
+    margin-top: 14px;\
+    padding: 14px 14px 12px 14px;\
+    font-weight: 600;\
+    color: #374151;\
+}\
+QGroupBox::title {\
+    subcontrol-origin: margin;\
+    subcontrol-position: top left;\
+    left: 14px;\
+    padding: 0 8px;\
+    background-color: #FFFFFF;\
+    color: #6366F1;\
+}\
+QPushButton {\
+    background-color: #FFFFFF;\
+    color: #4B5563;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 6px;\
+    padding: 6px 14px;\
+    font-size: 12px;\
+    min-height: 16px;\
+}\
+QPushButton:hover {\
+    background-color: #F3F4F6;\
+    border-color: #818CF8;\
+    color: #4338CA;\
+}\
+QPushButton:pressed { background-color: #E5E7EB; }\
+QPushButton:disabled {\
+    background-color: #F9FAFB;\
+    color: #9CA3AF;\
+    border-color: #E5E7EB;\
+}\
+QPushButton#confirmBtn {\
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,\
+        stop:0 #6366F1, stop:1 #8B5CF6);\
+    color: #FFFFFF;\
+    border: none;\
+    border-radius: 8px;\
+    padding: 8px 24px;\
+    font-size: 13px;\
+    font-weight: 600;\
+    min-width: 80px;\
+    min-height: 18px;\
+}\
+QPushButton#confirmBtn:hover {\
+    background: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:0,\
+        stop:0 #4F46E5, stop:1 #7C3AED);\
+}\
+QPushButton#confirmBtn:pressed { background: #4338CA; }\
+QPushButton#cancelBtn {\
+    background-color: #FFFFFF;\
+    color: #6B7280;\
+    border: 1px solid #E5E7EB;\
+    border-radius: 8px;\
+    padding: 8px 24px;\
+    font-size: 13px;\
+    min-width: 80px;\
+    min-height: 18px;\
+}\
+QPushButton#cancelBtn:hover { background-color: #F3F4F6; color: #1F2937; }\
+QPushButton#cancelBtn:pressed { background-color: #E5E7EB; }\
+QPushButton#m_clearCacheBtn {\
+    background-color: #FDF2F8;\
+    color: #DB2777;\
+    border: 1px solid #FBCFE8;\
+    border-radius: 6px;\
+    padding: 5px 12px;\
+    font-size: 12px;\
+}\
+QPushButton#m_clearCacheBtn:hover { background-color: #FCE7F3; border-color: #F472B6; }\
+QPushButton#m_clearCacheBtn:pressed { background-color: #FBCFE8; }\
+QScrollBar:vertical {\
+    background: transparent;\
+    width: 8px;\
+    margin: 4px 2px 4px 0;\
+    border: none;\
+}\
+QScrollBar::handle:vertical {\
+    background: #D1D5DB;\
+    min-height: 40px;\
+    border-radius: 4px;\
+}\
+QScrollBar::handle:vertical:hover { background: #9CA3AF; }\
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {\
+    background: none; border: none; height: 0;\
+}\
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; border: none; }\
+"));
 
     buildUI();
     loadFromConfig();
@@ -87,12 +322,13 @@ void SummarySettingsDialog::buildUI() {
     cacheLayout->addWidget(m_cacheEnabledCheck);
 
     m_cacheSizeLabel = new QLabel(this);
-    m_cacheSizeLabel->setStyleSheet(QStringLiteral(
-        u"QLabel { color: #6B7280; font-size: 12px; }"));
+    m_cacheSizeLabel->setObjectName(QStringLiteral("cacheSizeLabel"));
+    m_cacheSizeLabel->setText(QStringLiteral(u"\u5f53\u524d\u7f13\u5b58: - / - \u4e2a\u89c6\u9891"));
     cacheLayout->addWidget(m_cacheSizeLabel);
 
     QHBoxLayout* cacheBtnRow = new QHBoxLayout();
     m_clearCacheBtn = new QPushButton(QStringLiteral(u"\U0001F5D1 \u6e05\u7a7a\u7f13\u5b58"), this);
+    m_clearCacheBtn->setCursor(Qt::PointingHandCursor);
     cacheBtnRow->addWidget(m_clearCacheBtn);
     cacheBtnRow->addStretch();
     cacheLayout->addLayout(cacheBtnRow);
@@ -105,7 +341,11 @@ void SummarySettingsDialog::buildUI() {
     QHBoxLayout* bottomRow = new QHBoxLayout();
     bottomRow->addStretch();
     QPushButton* cancelBtn = new QPushButton(QStringLiteral(u"\u53d6\u6d88"), this);
+    cancelBtn->setObjectName(QStringLiteral("cancelBtn"));
+    cancelBtn->setCursor(Qt::PointingHandCursor);
     QPushButton* confirmBtn = new QPushButton(QStringLiteral(u"\u4fdd\u5b58"), this);
+    confirmBtn->setObjectName(QStringLiteral("confirmBtn"));
+    confirmBtn->setCursor(Qt::PointingHandCursor);
     confirmBtn->setDefault(true);
     bottomRow->addWidget(cancelBtn);
     bottomRow->addWidget(confirmBtn);

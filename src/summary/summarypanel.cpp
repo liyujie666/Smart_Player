@@ -102,7 +102,6 @@ void SummaryPanel::buildUI() {
     m_btnExport = new QPushButton(QStringLiteral(u"\U0001f4cb \u5bfc\u51fa"), this);
     m_btnExport->setObjectName("btnExport");
 
-    // 设置按钮 (打开 SummarySettingsDialog)
     m_btnSettings = new QPushButton(
         QIcon(QString::fromLatin1(":/SmartPlayer-icon/setting_dark.png")),
         QString(), this);
@@ -317,14 +316,13 @@ void SummaryPanel::buildUI() {
             border: none;
             subcontrol-origin: padding;
             subcontrol-position: right center;
-            width: 16px;
+            width: 18px;
         }
         QComboBox::down-arrow {
-            image: none;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 5px solid #9CA3AF;
-            margin-right: 2px;
+            image: url(:/SmartPlayer-icon/arrow_down_grey.png);
+            width: 10px;
+            height: 6px;
+            margin-right: 4px;
         }
         QComboBox QAbstractItemView {
             background-color: white;
@@ -366,6 +364,57 @@ void SummaryPanel::buildUI() {
             font-size: 10px;
             font-family: Microsoft YaHei, PingFang SC, sans-serif;
             padding: 0 2px;
+        }
+        /* 滚动条：与 TranscriptPanel 同款暗色细条（白底浅灰,8px 窄条） */
+        SummaryPanel QScrollBar:vertical {
+            background: transparent;
+            width: 8px;
+            margin: 4px 2px 4px 0;
+            border: none;
+        }
+        SummaryPanel QScrollBar::handle:vertical {
+            background: #D1D5DB;
+            min-height: 40px;
+            border-radius: 4px;
+            border: none;
+        }
+        SummaryPanel QScrollBar::handle:vertical:hover { background: #9CA3AF; }
+        SummaryPanel QScrollBar::handle:vertical:pressed { background: #6B7280; }
+        SummaryPanel QScrollBar::add-line:vertical,
+        SummaryPanel QScrollBar::sub-line:vertical {
+            background: none;
+            border: none;
+            height: 0px;
+        }
+        SummaryPanel QScrollBar::add-page:vertical,
+        SummaryPanel QScrollBar::sub-page:vertical {
+            background: none;
+            border: none;
+        }
+        SummaryPanel QScrollBar:horizontal {
+            background: transparent;
+            height: 8px;
+            margin: 0 4px 2px 4px;
+            border: none;
+        }
+        SummaryPanel QScrollBar::handle:horizontal {
+            background: #D1D5DB;
+            min-width: 40px;
+            border-radius: 4px;
+            border: none;
+        }
+        SummaryPanel QScrollBar::handle:horizontal:hover { background: #9CA3AF; }
+        SummaryPanel QScrollBar::handle:horizontal:pressed { background: #6B7280; }
+        SummaryPanel QScrollBar::add-line:horizontal,
+        SummaryPanel QScrollBar::sub-line:horizontal {
+            background: none;
+            border: none;
+            width: 0px;
+        }
+        SummaryPanel QScrollBar::add-page:horizontal,
+        SummaryPanel QScrollBar::sub-page:horizontal {
+            background: none;
+            border: none;
         }
     )"));
 }

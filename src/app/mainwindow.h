@@ -24,6 +24,10 @@
 #include <QTimer>
 #include <QMenu>
 #include <QLabel>
+#ifdef Q_OS_WIN
+#  include <QEvent>
+#  include <QWindow>
+#endif
 class SlidingTabWidget;
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -124,6 +128,7 @@ private slots:
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    bool event(QEvent *e) override;
 private:
     void initPreviewWindow();
     void initControlbarPresent();

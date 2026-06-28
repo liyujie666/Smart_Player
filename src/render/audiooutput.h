@@ -63,14 +63,14 @@ private:
     uint32_t audio_buf_index_ = 0;
 
     bool is_audio_init_ = false;
-    mutable QMutex mutex_;  // 线程锁
+    mutable QMutex mutex_;
 
     int64_t audio_clock_us_ = 0;
     int sample_rate_ = 0;
     bool need_resample_ = false;
 
-    int volume_ = 50;    // 默认音量 50%
-    bool mute_ = false;   // 默认非静音
+    int volume_ = 50;
+    bool mute_ = false;
     AVRational audio_timebase_;
 };
 

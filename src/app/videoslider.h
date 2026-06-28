@@ -11,7 +11,6 @@ public:
 
 
 signals:
-    /** 点击事件 */
     void clicked(VideoSlider *slider);
     void preview(int seektime, int x);
     void mouseleave();

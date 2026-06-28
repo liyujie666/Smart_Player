@@ -149,14 +149,12 @@ void PlayerCore::initAudioModule()
     AVCodecContext* codec_ctx = audio_decoder_->codecCtx();
     Resampler::AudioSpec in_spec;
 
-    // 填充输入参数
     in_spec.sampleRate  = codec_ctx->sample_rate;
     in_spec.sampleFmt   = codec_ctx->sample_fmt;
     in_spec.chs         = codec_ctx->ch_layout.nb_channels;
     in_spec.chLayout    = codec_ctx->ch_layout;
     in_spec.bytesPerSample = av_get_bytes_per_sample(in_spec.sampleFmt);
 
-    // SDL 播放参数
     Resampler::AudioSpec out_spec;
     out_spec.sampleRate  = 48000;
     out_spec.chs         = 2;
@@ -173,7 +171,6 @@ void PlayerCore::initAudioModule()
         return;
     }
 
-    // 初始化 SDL 音频输出
     audio_output_ = new AudioOutput(in_spec, out_spec, audio_frame_queue_,sync_clock_);
     if (audio_output_->Init() < 0) {
         qDebug() << "SDL 音频输出初始化失败";
@@ -201,14 +198,12 @@ void PlayerCore::initVideoModule()
         return;
     }
 
-    // 原视频参数
     AVCodecContext* codec_ctx = video_decoder_->codecCtx();
     VideoConverter::VideoSpec in_spec;
     in_spec.width    = codec_ctx->width;
     in_spec.height   = codec_ctx->height;
     in_spec.pixFmt   = codec_ctx->pix_fmt;
 
-    // 输出视频参数
     VideoConverter::VideoSpec out_spec;
     out_spec.width    = in_spec.width;
     out_spec.height   = in_spec.height;
@@ -254,17 +249,14 @@ void PlayerCore::play()
         is_seek_ = false;
         state_ = Running;
 
-        // 解复用线程
         demux_thread_ = QThread::create(&PlayerCore::demuxThreadFunc, this);
         demux_thread_->start();
 
-        // 音频解码线程
         if (audio_decoder_) {
             audio_decode_thread_ = QThread::create(&PlayerCore::audioDecodeThreadFunc, this);
             audio_decode_thread_->start();
         }
 
-        // 视频解码线程
         if (video_decoder_) {
             video_decode_thread_ = QThread::create(&PlayerCore::videoDecodeThreadFunc, this);
             video_decode_thread_->start();
@@ -379,6 +371,7 @@ void PlayerCore::setDecodeType(const QString &decoder)
 
 void PlayerCore::seek(int64_t pos_us)
 {
+    //qDebug() << "seek start : pos_us: " << pos_us;
     if (duration_ms_ <= 0 || pos_us < 0) return;
 
     {
@@ -406,6 +399,7 @@ void PlayerCore::seek(int64_t pos_us)
         cond_.wakeAll();
     }
     asr_manager_->reset();
+    qDebug() << "seek to " << pos_us << "us";
 }
 
 void PlayerCore::setScreenshotSavePath(const QString &savePath)
@@ -582,7 +576,6 @@ void PlayerCore::audioDecodeThreadFunc()
         if (!pkt) continue;
 
 
-        // 解码
         int ret = audio_decoder_->decode(pkt, decoded_frame);
         GlobalPool::getPacketPool().recycle(pkt);
 
@@ -605,7 +598,6 @@ void PlayerCore::audioDecodeThreadFunc()
         double duration = av_q2d(AVRational{ decoded_frame->nb_samples, decoded_frame->sample_rate });
 
         asr_manager_->sendAudioFrame(decoded_frame);
-        // 倍速滤镜处理
         if (audio_filter_ && audio_filter_->isInitialized())
         {
             ret = audio_filter_->process(decoded_frame, filtered_frame);
@@ -620,7 +612,6 @@ void PlayerCore::audioDecodeThreadFunc()
             av_frame_move_ref(filtered_frame, decoded_frame);
         }
 
-        //使用原来的pts
         filtered_frame->pts = pts;
         filtered_frame->duration = duration;
 
@@ -648,7 +639,6 @@ void PlayerCore::videoDecodeThreadFunc()
     bool use_rgb_test = false;
     while (!is_exit_)
     {
-        // 处理暂停 / Seek 等待
         mutex_.lock();
         if (state_ == Paused || is_seek_)
         {
@@ -662,15 +652,11 @@ void PlayerCore::videoDecodeThreadFunc()
         while (video_frame_queue_->Size() >= MAX_VIDEO_FRAME && !is_exit_ && !is_seek_) {
             QThread::msleep(5);
         }
-        //qDebug() << "video queue size : " << video_pkt_queue_->Size();
         AVPacket* pkt = video_pkt_queue_->Pop(10);
         if (!pkt) {
-            //qDebug() << "pkt is null";
             continue;
         }
-        //qDebug() << "vpkt queue poped(size:" << video_pkt_queue_->Size() << ")";
         int ret = video_decoder_->decode(pkt, decoded_frame);
-        //av_packet_free(&pkt);
         GlobalPool::getPacketPool().recycle(pkt);
 
         if (ret == AVERROR(EAGAIN)) {
@@ -703,7 +689,6 @@ void PlayerCore::videoDecodeThreadFunc()
 
     }
 
-    // 释放资源
     av_frame_free(&decoded_frame);
     av_frame_free(&rgb_frame);
     qDebug() << "视频解码线程退出";
@@ -729,12 +714,10 @@ void PlayerCore::videoRenderThreadFunc()
         frame = video_frame_queue_->Pop(10);
         if (!frame) continue;
 
-        // 视频pts
         AVStream* vs = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
         int64_t video_pts_us = av_rescale_q(frame->pts, vs->time_base, {1,1000000});
         //qDebug() << "video pts : " << video_pts_us;
 
-        // 计算延迟
         int64_t delay = sync_clock_->calc_display_delay(video_pts_us);
         //qDebug() << "video delay:" << delay;
         if (delay > 0) {
@@ -742,7 +725,6 @@ void PlayerCore::videoRenderThreadFunc()
             //qDebug() << "video thread sleeping:" << delay;
         }
 
-        // 严重滞后，丢帧追赶
         if (sync_clock_->need_force_catch_up()) {
             GlobalPool::getFramePool().recycle(frame);
             continue;
@@ -765,17 +747,14 @@ void PlayerCore::videoRenderThreadFunc()
             emit frameYuv420pDecoded(frame_data, w, h);
         }
         else if (fmt == AV_PIX_FMT_NV12) {
-            // NV12: Y plane (w*h) + UV plane (w*h/2)
             int buf_size = w * h * 3 / 2;
             frame_data.reserve(buf_size);
-            // 拷贝Y平面
             const uint8_t* y_buf = frame->data[0];
             int y_stride = frame->linesize[0];
             for (int i = 0; i < h; i++) {
                 frame_data.append((const char*)y_buf, w);
                 y_buf += y_stride;
             }
-            // 拷贝UV交织平面
             const uint8_t* uv_buf = frame->data[1];
             int uv_stride = frame->linesize[1];
             int uv_h = h / 2;
@@ -793,7 +772,7 @@ void PlayerCore::videoRenderThreadFunc()
             int stride = frame->linesize[0];
 
             for (int i = 0; i < h; i++) {
-                frame_data.append((const char*)data, w * 4); // RGBA=4字节
+                frame_data.append((const char*)data, w * 4);
                 data += stride;
             }
 
@@ -842,7 +821,6 @@ void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int h
     }
     else
     {
-        // 全局通用：系统 图片 文件夹
         saveDir = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
         saveDir += "/SmartPlayer_Screenshot";
     }
@@ -853,7 +831,6 @@ void PlayerCore::saveFrameToImage(const QByteArray& frame_data, int width, int h
     QString fileName = QString("screenshot_%1.jpg").arg(QDateTime::currentDateTime().toString("yyyy-MM-dd_hhmmss"));
     QString fullPath = dir.filePath(fileName);
 
-    // 格式转换
     uint8_t* rgb_buf[4] = {nullptr};
     int rgb_linesize[4] = {0};
     int allocResult = av_image_alloc(rgb_buf, rgb_linesize, width, height, AV_PIX_FMT_RGB24, 1);
@@ -938,7 +915,6 @@ void PlayerCore::clearAllQueues()
 
 void PlayerCore::releaseResources()
 {
-    // 释放音频模块
     if (audio_filter_) {
         audio_filter_->close();
         delete audio_filter_;
@@ -954,7 +930,6 @@ void PlayerCore::releaseResources()
         audio_decoder_ = nullptr;
     }
 
-    // 释放视频模块
     if (converter_) {
         delete converter_;
         converter_ = nullptr;
@@ -965,7 +940,6 @@ void PlayerCore::releaseResources()
         video_decoder_ = nullptr;
     }
 
-    // 释放解复用器
     if (demuxer_) {
         demuxer_->close();
         delete demuxer_;
@@ -983,10 +957,8 @@ int64_t PlayerCore::duration() const
 int64_t PlayerCore::currentPos() const
 {
     if (hasAudio_) {
-        // 音视频/纯音频
         return sync_clock_->get_audio_clock() / 1000000;
     } else if (hasVideo_) {
-        // 纯视频
         return sync_clock_->getCurrentSystemClock() / 1000000;
     }
     return 0;
