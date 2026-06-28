@@ -4,6 +4,10 @@
 >
 > 当前构建系统：**CMake**（`Smart_Player.pro` 仅作历史参考保留）。
 
+## 项目截图
+
+![Smart_Player](docs/screenshots/setting-dialog-2026-06-28.png)
+
 ---
 
 ## 1. 项目概览
@@ -66,7 +70,8 @@ Smart_Player/
 ├── docs/                       # 设计文档 / 分析报告
 │   ├── MVVM_REFACTOR_PLAN.md
 │   ├── 文稿面板设计方案.md
-│   └── 内存安全分析报告.md
+│   ├── 内存安全分析报告.md
+│   └── screenshots/             # README 中引用的界面截图
 │
 ├── build-cmake/                # ★ CMake 构建产物（.gitignore，不会入库）
 │
@@ -238,6 +243,6 @@ build-cmake\Smart_Player.exe
 
 | 日期 | 提交 | 说明 |
 |------|------|------|
-| 2026-06-28 | （未提交） | Windows 全屏修复（QWindowsWindow + WS_BORDER）；SettingDialog / SummarySettingsDialog / SummaryPanel 主题重做；seek 溢出与切视频音量/倍速 bug 修复；新增 tools/make_check_icon.py + 6 个图标资源 |
+| 2026-06-28 | （未提交） | Windows 全屏修复（QWindowsWindow + WS_BORDER）；SettingDialog / SummarySettingsDialog / SummaryPanel 主题重做；seek 溢出与切视频音量/倍速 bug 修复；新增 tools/make_check_icon.py + 6 个图标资源；README 顶部增补项目展示图 |
 | 2026-06-27 | `a8f39c7` | 合并 MVVM 阶段 3-5 + 内存泄漏修复；新增 Settings/Summary/Transcript 三个 ViewModel |
 | 2026-06-27 | `4e93594` | 迁移到 CMake 并重构目录结构（qmake→CMake，源码统一放 `src/`） |
