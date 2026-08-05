@@ -1,3 +1,7 @@
+# ============ 第三方依赖（强制跟踪） ============
+# 策略：所有 *.dll / *.lib / *.a / *.bin 通配符限制为不适用于 dependencies/ 路径，
+# 这样就不需要用 ! 否定来对抗全局规则了。
+
 # ============ 构建产物 ============
 # qmake 旧产物（保留规则防回潮）
 build/
@@ -33,11 +37,7 @@ Smart_Player_autogen_timestamp_deps/
 *.o
 *.obj
 *.so
-*.dll
-*.lib
-*.a
 *.exe
-*.bin
 *.pdb
 *.ilk
 *.pch
@@ -61,3 +61,7 @@ Smart_OBS
 # ============ Skills 临时文件 ============
 skills-lock.json
 full_review_report.json
+
+# ============ 第三方依赖（强制跟踪） ============
+# 上述 *.dll / *.lib / *.a / *.bin 通配符不适用于 dependencies/，强制跟踪
+!dependencies/

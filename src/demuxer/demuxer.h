@@ -10,6 +10,7 @@ extern "C"
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>
+#include <libavutil/time.h>
 }
 
 class Demuxer : public QObject
@@ -32,7 +33,10 @@ public:
 
     int open(const char *filename);
     void close();
+    void requestAbort();
+    void resetAbort();
     int readPacket(AVPacket *pkt);
+    int64_t timestampToUs(AVMediaType type, int64_t timestamp) const;
     int seek(int64_t ts_us, bool videoSeek = true);
     
     // 获取媒体流信息
@@ -57,6 +61,9 @@ private:
     static int interruptCallback(void* opaque);
 
 
+    static constexpr int64_t OPEN_TIMEOUT_US = 5000000;
+    static constexpr int64_t READ_TIMEOUT_US = 3000000;
+
     AVFormatContext *fmtCtx_ = nullptr;
     MediaType mediaType_ = MediaType::FILE_TYPE;
 
@@ -67,6 +74,8 @@ private:
     mutable QReadWriteLock lock_;
     std::atomic<bool> abort_{false};
     std::atomic<bool> isOpened_{false};
+    std::atomic<bool> ioActive_{false};
+    std::atomic<int64_t> ioDeadlineUs_{0};
     
 
 };

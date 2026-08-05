@@ -38,6 +38,8 @@ int Demuxer::open(const char *filename)
     QWriteLocker locker(&lock_);
     closeInternal();
     abort_ = false;
+    ioActive_ = false;
+    ioDeadlineUs_ = 0;
     
     // 分配上下文
     fmtCtx_ = avformat_alloc_context();
@@ -53,16 +55,21 @@ int Demuxer::open(const char *filename)
     // 解析媒体类型
     mediaType_ = parseMediaType(filename);
 
-    // 网络流低延迟配置（RTSP/RTMP）
+    // 网络流配置。应用层的 interrupt callback 仍是最终超时保障。
     AVDictionary* options = nullptr;
     if (mediaType_ == MediaType::RTSP_TYPE) {
         av_dict_set(&options, "rtsp_transport", "tcp", 0);
-        av_dict_set(&options, "stimeout", "2000000", 0);
-        av_dict_set(&options, "open_timeout", "2", 0);
+        av_dict_set(&options, "timeout", "3000000", 0);
+        av_dict_set(&options, "rw_timeout", "3000000", 0);
+    } else if (mediaType_ == MediaType::RTMP_TYPE) {
+        av_dict_set(&options, "rw_timeout", "3000000", 0);
     }
 
-    // 打开媒体文件
+    ioActive_ = mediaType_ != MediaType::FILE_TYPE;
+    ioDeadlineUs_ = ioActive_ ? av_gettime_relative() + OPEN_TIMEOUT_US : 0;
     int ret = avformat_open_input(&fmtCtx_, filename, nullptr, &options);
+    ioActive_ = false;
+    ioDeadlineUs_ = 0;
     av_dict_free(&options);
     CHECK_FF_ERROR(ret, avformat_open_input);
     if (ret < 0) {
@@ -72,7 +79,11 @@ int Demuxer::open(const char *filename)
     }
 
     // 读取流信息
+    ioActive_ = mediaType_ != MediaType::FILE_TYPE;
+    ioDeadlineUs_ = ioActive_ ? av_gettime_relative() + OPEN_TIMEOUT_US : 0;
     ret = avformat_find_stream_info(fmtCtx_, nullptr);
+    ioActive_ = false;
+    ioDeadlineUs_ = 0;
     CHECK_FF_ERROR(ret, avformat_find_stream_info);
     if (ret < 0) {
         closeInternal();
@@ -89,13 +100,26 @@ int Demuxer::open(const char *filename)
 
 void Demuxer::close()
 {
+    requestAbort();
     QWriteLocker locker(&lock_);
     closeInternal();
+}
+
+void Demuxer::requestAbort()
+{
+    abort_.store(true, std::memory_order_release);
+}
+
+void Demuxer::resetAbort()
+{
+    abort_.store(false, std::memory_order_release);
 }
 
 void Demuxer::closeInternal()
 {
     abort_ = true;
+    ioActive_ = false;
+    ioDeadlineUs_ = 0;
     isOpened_ = false;
 
     if (fmtCtx_) {
@@ -110,10 +134,23 @@ void Demuxer::closeInternal()
 int Demuxer::readPacket(AVPacket *pkt)
 {
     if (!pkt || !isOpened_) return AVERROR(EINVAL);
-    
+
     QReadLocker locker(&lock_);
+    const bool networkStream = mediaType_ != MediaType::FILE_TYPE;
+    ioActive_ = networkStream;
+    ioDeadlineUs_ = networkStream ? av_gettime_relative() + READ_TIMEOUT_US : 0;
     int ret = av_read_frame(fmtCtx_, pkt);
+    ioActive_ = false;
+    ioDeadlineUs_ = 0;
     return ret;
+}
+
+int64_t Demuxer::timestampToUs(AVMediaType type, int64_t timestamp) const
+{
+    QReadLocker locker(&lock_);
+    const int index = getStreamIndexInternal(type);
+    if (!fmtCtx_ || index < 0 || timestamp == AV_NOPTS_VALUE) return AV_NOPTS_VALUE;
+    return av_rescale_q(timestamp, fmtCtx_->streams[index]->time_base, AVRational{1, 1000000});
 }
 
 int Demuxer::seek(int64_t ts_us, bool useVideoStream)
@@ -237,6 +274,10 @@ Demuxer::MediaType Demuxer::parseMediaType(const char *filename)
 
 int Demuxer::interruptCallback(void* opaque)
 {
-    Demuxer* self = (Demuxer*)opaque;
-    return self->abort_ ? 1 : 0;
+    auto* self = static_cast<Demuxer*>(opaque);
+    if (self->abort_.load(std::memory_order_acquire)) return 1;
+    if (!self->ioActive_.load(std::memory_order_acquire)) return 0;
+
+    const int64_t deadline = self->ioDeadlineUs_.load(std::memory_order_acquire);
+    return deadline > 0 && av_gettime_relative() >= deadline ? 1 : 0;
 }

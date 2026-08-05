@@ -34,6 +34,7 @@ public:
 
     void pause();
     void resume();
+    void flush();
 
     void setAudioTimebase(AVRational tb);
     void setVolume(int volume); // volume: 0~100

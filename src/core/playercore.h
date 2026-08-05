@@ -33,6 +33,14 @@ public:
         Paused = 2
     };
 
+    enum class NetworkState {
+        Connected,
+        Buffering,
+        Reconnecting,
+        Failed
+    };
+    Q_ENUM(NetworkState)
+
     explicit PlayerCore(QObject *parent = nullptr);
     ~PlayerCore();
 
@@ -82,6 +90,9 @@ signals:
     void playFailed(const QString& info);
     void playFinished();
     void openResult(bool result);
+    void networkStateChanged(NetworkState state);
+    void reconnecting(int attempt, int delayMs);
+    void streamRecovered();
     void screecshotStatus(const QString& filePath,bool isOk);
     void frameYuv420pDecoded(const QByteArray& yuvData,int width,int height);
     void frameNv12Decoded(const QByteArray& yuvData,int width,int height);
@@ -90,6 +101,9 @@ signals:
 
 private:
     bool openInternal(const QString &url);
+    bool reconnectDemuxer();
+    bool isLiveStream() const;
+    void resetAfterReconnect();
     void demuxThreadFunc();       // 解复用线程
     void audioDecodeThreadFunc(); // 音频解码线程
     void videoDecodeThreadFunc(); // 视频解码线程
@@ -110,6 +124,8 @@ private:
     std::atomic<State> state_;
     std::atomic<bool> is_exit_;       // 线程退出标志
     std::atomic<bool> is_seek_;       // Seek标志
+    std::atomic<bool> wait_video_keyframe_{false};
+    std::atomic<NetworkState> network_state_{NetworkState::Connected};
     std::atomic<bool> need_screenshot_{false};
     std::atomic<bool> screenshot_busy_{false};
     QMutex mutex_;

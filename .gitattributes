@@ -1,0 +1,4 @@
+# Git LFS configuration
+# whisper.cpp ggml model files (*.bin): ~3 GB total, managed by Git LFS
+dependencies/models/*.bin filter=lfs diff=lfs merge=lfs -text
+dependencies/bin/*.dll filter=lfs diff=lfs merge=lfs -text

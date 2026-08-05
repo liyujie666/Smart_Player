@@ -79,10 +79,7 @@ void PlayerViewModel::seekRelativeSec(int seconds) {
 }
 
 void PlayerViewModel::setVolume(int v) {
-    // 注意：不要在这里因为 v == m_volume 而 return。
-    // 切视频后 core 内部的 audio_output_ 是新创建的，默认 volume_=50，
-    // 如果 VM 的 m_volume 还是同一个值（例如用户先前是 50）就会被短路，
-    // 导致新视频的音频输出停留在默认 50%。这里必须无条件把 UI 状态推给 core。
+    
     m_volume = v;
     if (m_core) m_core->setVolume(v);
     emit volumeChanged(v);
@@ -90,8 +87,7 @@ void PlayerViewModel::setVolume(int v) {
 
 void PlayerViewModel::setMute(bool mute) {
     if (!m_core) return;
-    // 同样不要用 m_core->isMute() == mute 短路：openInternal 会重新 new audio_output_，
-    // 新 audio_output_ 默认 mute_=false；UI 上可能仍处于静音期望，需要强制推一次。
+  
     m_core->setMute(mute);
     emit muteChanged(mute);
 }
@@ -102,10 +98,7 @@ void PlayerViewModel::toggleMute() {
 }
 
 void PlayerViewModel::setSpeed(int idx) {
-    // 注意：不要在这里因为 idx == m_speedIndex 而 return。
-    // openInternal 会重新 new AudioFilter 与 sync_clock_，它们都是默认值（1.0 倍速）。
-    // UI 显示仍可能是 2 倍，但实际 core 已重置；如果这里短路，新视频就会一直按 1.0 播放。
-    // 必须无条件把当前 speedIndex 推给 core，让它在新模块上重新设置。
+    
     m_speedIndex = idx;
     if (m_core) m_core->setSpeed(idx);
     emit speedIndexChanged(idx);

@@ -116,6 +116,17 @@ void AudioOutput::resume()
     SDL_PauseAudio(0);
 }
 
+void AudioOutput::flush()
+{
+    if (!is_audio_init_) return;
+
+    SDL_LockAudio();
+    audio_buf_size_ = 0;
+    audio_buf_index_ = 0;
+    audio_clock_us_ = 0;
+    SDL_UnlockAudio();
+}
+
 void AudioOutput::setAudioTimebase(AVRational tb)
 {
     audio_timebase_ = tb;

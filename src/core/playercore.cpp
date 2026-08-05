@@ -299,6 +299,9 @@ void PlayerCore::stop()
         is_seek_ = false;
         cond_.wakeAll();
     }
+    if (demuxer_) {
+        demuxer_->requestAbort();
+    }
 
     clearAllQueues();
 
@@ -475,6 +478,57 @@ bool PlayerCore::isAsrEnabled() const
     return asrEnabled_;
 }
 
+bool PlayerCore::isLiveStream() const
+{
+    if (!demuxer_) return false;
+    const auto type = demuxer_->mediaType();
+    return type == Demuxer::MediaType::RTSP_TYPE ||
+           type == Demuxer::MediaType::RTMP_TYPE;
+}
+
+void PlayerCore::resetAfterReconnect()
+{
+    clearAllQueues();
+    if (audio_output_) audio_output_->flush();
+    if (audio_decoder_) audio_decoder_->flush();
+    if (video_decoder_) video_decoder_->flush();
+    sync_clock_->reset();
+    wait_video_keyframe_ = hasVideo_;
+
+    if (hasAudio_) {
+        AVStream* stream = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
+        if (stream && audio_output_) audio_output_->setAudioTimebase(stream->time_base);
+    }
+}
+
+bool PlayerCore::reconnectDemuxer()
+{
+    if (!demuxer_ || is_exit_) return false;
+
+    demuxer_->close();
+    if (is_exit_) return false;
+
+    const QByteArray url = file_url_.toUtf8();
+    const int ret = demuxer_->open(url.constData());
+    if (ret < 0 || is_exit_) return false;
+
+    AVStream* videoStream = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
+    AVStream* audioStream = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
+    if ((hasVideo_ && (!videoStream || !video_decoder_ ||
+                       video_decoder_->codecCtx()->codec_id != videoStream->codecpar->codec_id)) ||
+        (hasAudio_ && (!audioStream || !audio_decoder_ ||
+                       audio_decoder_->codecCtx()->codec_id != audioStream->codecpar->codec_id))) {
+        qWarning() << "重连后流结构或编码格式发生变化，需要重新打开播放器";
+        demuxer_->close();
+        return false;
+    }
+
+    video_stream_idx_ = demuxer_->getStreamIndex(AVMEDIA_TYPE_VIDEO);
+    audio_stream_idx_ = demuxer_->getStreamIndex(AVMEDIA_TYPE_AUDIO);
+    resetAfterReconnect();
+    return true;
+}
+
 void PlayerCore::demuxThreadFunc()
 {
     qDebug() << "解复用线程启动";
@@ -513,6 +567,34 @@ void PlayerCore::demuxThreadFunc()
         int ret = demuxer_->readPacket(pkt);
         if (ret < 0)
         {
+            if (is_exit_) break;
+            if (isLiveStream()) {
+                network_state_ = NetworkState::Buffering;
+                emit networkStateChanged(NetworkState::Buffering);
+                qWarning() << "直播流读取中断，准备重连，错误码：" << ret;
+
+                int reconnectAttempt = 0;
+                bool reconnected = false;
+                while (!is_exit_ && !reconnected) {
+                    ++reconnectAttempt;
+                    const int delayMs = qMin(5000, 500 * (1 << qMin(reconnectAttempt - 1, 3)));
+                    network_state_ = NetworkState::Reconnecting;
+                    emit networkStateChanged(NetworkState::Reconnecting);
+                    emit reconnecting(reconnectAttempt, delayMs);
+                    for (int waitedMs = 0; !is_exit_ && waitedMs < delayMs; waitedMs += 50) {
+                        QThread::msleep(50);
+                    }
+                    if (!is_exit_) reconnected = reconnectDemuxer();
+                }
+
+                if (is_exit_) break;
+                network_state_ = NetworkState::Connected;
+                emit networkStateChanged(NetworkState::Connected);
+                emit streamRecovered();
+                qDebug() << "直播流重连成功";
+                continue;
+            }
+
             if (ret == AVERROR_EOF){
                 qDebug() << "解复用完成：媒体文件读取完毕";
                 emit playFinished();
@@ -535,6 +617,14 @@ void PlayerCore::demuxThreadFunc()
         }
         else if (pkt->stream_index == video_idx && video_pkt_queue_)
         {
+            if (wait_video_keyframe_) {
+                if (!(pkt->flags & AV_PKT_FLAG_KEY)) {
+                    av_packet_unref(pkt);
+                    continue;
+                }
+                if (video_decoder_) video_decoder_->flush();
+                wait_video_keyframe_ = false;
+            }
             video_pkt_queue_->Push(pkt);
             //qDebug() << "vpkt queue size " << video_pkt_queue_->Size();
         }
@@ -714,8 +804,12 @@ void PlayerCore::videoRenderThreadFunc()
         frame = video_frame_queue_->Pop(10);
         if (!frame) continue;
 
-        AVStream* vs = demuxer_->getStream(AVMEDIA_TYPE_VIDEO);
-        int64_t video_pts_us = av_rescale_q(frame->pts, vs->time_base, {1,1000000});
+
+        int64_t video_pts_us = demuxer_->timestampToUs(AVMEDIA_TYPE_VIDEO, frame->pts);
+        if (video_pts_us == AV_NOPTS_VALUE) {
+            GlobalPool::getFramePool().recycle(frame);
+            continue;
+        }
         //qDebug() << "video pts : " << video_pts_us;
 
         int64_t delay = sync_clock_->calc_display_delay(video_pts_us);
