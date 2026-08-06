@@ -75,6 +75,26 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 # 运行时加载：bin/*.dll → 需要加入 PATH 或复制到可执行文件同目录
 LIBS        += -L$$PWD/dependencies/lib -lavcodec -lavdevice -lavfilter -lavformat -lavutil -lpostproc -lswresample -lswscale -lSDL2 -lwhisper -lggml -lggml-base -lggml-cpu
 
+# ONNX Runtime（用于 FSMN-VAD / SenseVoice，可选）
+exists($$PWD/dependencies/lib/onnxruntime.lib) | exists($$PWD/dependencies/lib/libonnxruntime.a) {
+    LIBS += -lonnxruntime
+    DEFINES += HAS_ONNXRUNTIME=1
+    message("ONNX Runtime found, VAD/SenseVoice enabled")
+} else {
+    DEFINES += HAS_ONNXRUNTIME=0
+    message("ONNX Runtime not found, VAD/SenseVoice disabled")
+}
+
+# CTranslate2（用于 NLLB / MarianMT 本地翻译，可选）
+exists($$PWD/dependencies/lib/ctranslate2.lib) | exists($$PWD/dependencies/lib/libctranslate2.a) {
+    LIBS += -lctranslate2 -lsentencepiece
+    DEFINES += HAS_CTRANSLATE2=1
+    message("CTranslate2 found, NLLB/MarianMT enabled")
+} else {
+    DEFINES += HAS_CTRANSLATE2=0
+    message("CTranslate2 not found, NLLB/MarianMT disabled")
+}
+
 # 运行时 DLL 搜索路径（exe 同目录的依赖）
 win32: LIBS += -L$$PWD/dependencies/bin
 

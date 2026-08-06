@@ -124,9 +124,31 @@ set(ALL_HEADERS
     ${POOL_HEADERS} ${UTILS_HEADERS}
 )
 
-# ========== Whisper (自定义 Find) ==========
+# ========== 自定义 Find 模块 ==========
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
+
+# Whisper
 find_package(Whisper REQUIRED)
+
+# ONNX Runtime (用于 FSMN-VAD / SenseVoice)
+find_package(OnnxRuntime QUIET)
+if(OnnxRuntime_FOUND)
+    message(STATUS "ONNX Runtime found: ${OnnxRuntime_LIBRARY}")
+    add_compile_definitions(HAS_ONNXRUNTIME=1)
+else()
+    message(STATUS "ONNX Runtime not found - VAD/SenseVoice will be disabled")
+    add_compile_definitions(HAS_ONNXRUNTIME=0)
+endif()
+
+# CTranslate2 (用于 NLLB / MarianMT 本地翻译)
+find_package(CTranslate2 QUIET)
+if(CTranslate2_FOUND)
+    message(STATUS "CTranslate2 found: ${CTranslate2_LIBRARY}")
+    add_compile_definitions(HAS_CTRANSLATE2=1)
+else()
+    message(STATUS "CTranslate2 not found - NLLB/MarianMT will be disabled")
+    add_compile_definitions(HAS_CTRANSLATE2=0)
+endif()
 
 # Whisper 的 .lib 是导入库（MinGW 风格），CMake 把它当作 target 链接时
 # 会展开成 -lwhisper，但 cmake 是按文件名查的 (libwhisper.lib 或 whisper.lib)
@@ -205,8 +227,18 @@ target_link_options(${PROJECT_NAME} PRIVATE
     "-Wl,--end-group"
 )
 
-# Whisper + ggml：通过 INTERFACE target 链接（避免 -lwhisper 解析失败）
+# Whisper +ggml：通过 INTERFACE target 链接（避免 -lwhisper 解析失败）
 target_link_libraries(${PROJECT_NAME} PRIVATE whisper_import)
+
+# ONNX Runtime（可选）
+if(OnnxRuntime_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE onnxruntime::onnxruntime)
+endif()
+
+# CTranslate2（可选，用于本地翻译）
+if(CTranslate2_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ctranslate2::ctranslate2)
+endif()
 
 # Windows 系统库
 target_link_libraries(${PROJECT_NAME} PRIVATE dbghelp)

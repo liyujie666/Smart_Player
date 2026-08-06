@@ -1,13 +1,11 @@
 #include "asrrealtimestrategy.h"
-#include "asrworker.h"
+#include "whisperengine.h"
 #include "asrmodelcache.h"
 #include "utils/asrutils.h"
 #include <QDebug>
 #include <chrono>
 
-AsrRealtimeStrategy::AsrRealtimeStrategy() {
-    worker_ = std::make_unique<AsrWorker>();
-}
+AsrRealtimeStrategy::AsrRealtimeStrategy() = default;
 AsrRealtimeStrategy::~AsrRealtimeStrategy() {
     stop();
     release();
@@ -31,22 +29,29 @@ bool AsrRealtimeStrategy::init(const QString&, AVStream* audio, SubtitleQueue* q
     resampler_ = std::make_unique<Resampler>();
     if (resampler_->init(in_spec, out_spec) < 0) return false;
 
-    AsrConfig cfg;
+    AsrEngineConfig cfg;
     cfg.model_path = model_path_.toStdString();
 
-    // 优先从模型缓存获取已加载的上下文
-    whisper_context* cached_ctx = nullptr;
-    if (AsrModelCache::instance().tryAcquire(cached_ctx)) {
-        qDebug() << "[AsrRealtimeStrategy] using cached whisper context";
-        if (worker_->initWithContext(cached_ctx, cfg)) {
-            uses_cached_model_ = true;
-            return true;
+    // 创建 ASR 引擎
+    engine_ = createAsrEngine(engine_type_);
+    if (!engine_) return false;
+
+    // Whisper 引擎特有：优先从模型缓存获取已加载的上下文
+    if (engine_type_ == AsrEngineType::Whisper) {
+        auto* whisper = dynamic_cast<WhisperEngine*>(engine_.get());
+        whisper_context* cached_ctx = nullptr;
+        if (whisper && AsrModelCache::instance().tryAcquire(cached_ctx)) {
+            qDebug() << "[AsrRealtimeStrategy] using cached whisper context";
+            if (whisper->initWithContext(cached_ctx, cfg)) {
+                uses_cached_model_ = true;
+                return true;
+            }
+            AsrModelCache::instance().release();
+            qDebug() << "[AsrRealtimeStrategy] failed to init with cached context, loading own";
         }
-        AsrModelCache::instance().release();
-        qDebug() << "[AsrRealtimeStrategy] failed to init with cached context, loading own";
     }
 
-    if (!worker_->init(cfg)) return false;
+    if (!engine_->init(cfg)) return false;
     return true;
 }
 
@@ -68,7 +73,7 @@ void AsrRealtimeStrategy::reset() {
 }
 
 void AsrRealtimeStrategy::release() {
-    if (worker_) worker_->release();
+    if (engine_) engine_->release();
     if (uses_cached_model_) {
         AsrModelCache::instance().release();
         uses_cached_model_ = false;
@@ -89,7 +94,7 @@ void AsrRealtimeStrategy::sendAudio(AVFrame* frame) {
 
 void AsrRealtimeStrategy::run() {
     const int SR = 16000;
-    const size_t win = 3 * SR;
+    const size_t win = 3* SR;
     const size_t step = 1 * SR;
     std::vector<float> buf(win);
 
@@ -102,7 +107,7 @@ void AsrRealtimeStrategy::run() {
         ring_.peek(buf.data(), win);
 
         std::vector<SubtitleItem> res;
-        if (worker_->recognize(buf, res, start)) {
+        if (engine_->recognize(buf, res, start)) {
             std::string text;
             for (auto& i : res) text = AsrUtil::mergeOverlap(text, i.text);
             if (!text.empty() && text != last_text_) {

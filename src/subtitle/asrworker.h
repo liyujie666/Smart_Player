@@ -1,44 +1,55 @@
 #ifndef ASRWORKER_H
 #define ASRWORKER_H
 
-#include <vector>
-#include <string>
-#include <memory>
-#include "whisper/whisper.h"
+//============================================================
+// 已废弃：AsrWorker 已重构为 WhisperEngine (实现 IAsrEngine 接口)
+// 此文件保留作为兼容层，将AsrWorker 类型别名指向 WhisperEngine
+// 新代码请直接使用 IAsrEngine / WhisperEngine
+// ============================================================
+
+#include "whisperengine.h"
 #include "queue/subtitlequeue.h"
 
-struct AsrConfig{
+// 兼容旧配置结构
+struct AsrConfig {
     std::string model_path;
     std::string language = "auto";
     bool translate = false;
 };
 
-class AsrWorker{
+// AsrWorker 现在是 WhisperEngine 的轻量包装，保持向后兼容
+class AsrWorker {
     AsrWorker(const AsrWorker&) = delete;
     AsrWorker& operator=(const AsrWorker&) = delete;
-    AsrWorker(AsrWorker&&) = delete;
-    AsrWorker& operator=(AsrWorker&&) = delete;
 public:
-    AsrWorker() = default;
-    ~AsrWorker();
+    AsrWorker() : engine_(std::make_unique<WhisperEngine>()) {}
+    ~AsrWorker() = default;
 
-    // 优先使用外部传入的已加载上下文（由 AsrModelCache 提供）
-    // 返回 true 表示使用外部上下文成功
-    bool initWithContext(whisper_context* external_ctx, const AsrConfig& cfg);
+    bool initWithContext(whisper_context* external_ctx, const AsrConfig& cfg) {
+        AsrEngineConfig ecfg;
+        ecfg.model_path = cfg.model_path;
+        ecfg.language = cfg.language;
+        return engine_->initWithContext(external_ctx, ecfg);
+    }
 
-    // 备用方案：自己加载模型文件（当缓存未命中时使用）
-    bool init(const AsrConfig& cfg);
+    bool init(const AsrConfig& cfg) {
+        AsrEngineConfig ecfg;
+        ecfg.model_path = cfg.model_path;
+        ecfg.language = cfg.language;
+        return engine_->init(ecfg);
+    }
 
-    void release();
-    bool isReady() const { return ctx_ != nullptr; }
+    void release() { engine_->release(); }
+    bool isReady() const { return engine_->isReady(); }
 
-    bool recognize(const std::vector<float>& pcm, std::vector<SubtitleItem>& out, double base_sec = 0);
-    void reset();
+    bool recognize(const std::vector<float>& pcm, std::vector<SubtitleItem>& out, double base_sec = 0) {
+        return engine_->recognize(pcm, out, base_sec);
+    }
+
+    void reset() { engine_->reset(); }
 
 private:
-    whisper_context* ctx_ = nullptr;
-    AsrConfig cfg_;
-    bool owns_context_ = false;
+    std::unique_ptr<WhisperEngine> engine_;
 };
 
 #endif // ASRWORKER_H

@@ -1,10 +1,9 @@
 #include "asrofflinestrategy.h"
-#include <QtConcurrent>
+#include "whisperengine.h"
+#include<QtConcurrent>
 #include <QDebug>
 
-AsrOfflineStrategy::AsrOfflineStrategy() {
-    worker_ = std::make_unique<AsrWorker>();
-}
+AsrOfflineStrategy::AsrOfflineStrategy() = default;
 AsrOfflineStrategy::~AsrOfflineStrategy() {
     stop();
     release();
@@ -36,22 +35,29 @@ bool AsrOfflineStrategy::init(const QString& url, AVStream*, SubtitleQueue* queu
     res_ = std::make_unique<Resampler>();
     if (res_->init(in_spec, out_spec) < 0) return false;
 
-    AsrConfig cfg;
+    AsrEngineConfig cfg;
     cfg.model_path = model_path_.toStdString();
 
-    // 优先从模型缓存获取已加载的上下文
-    whisper_context* cached_ctx = nullptr;
-    if (AsrModelCache::instance().tryAcquire(cached_ctx)) {
-        qDebug() << "[AsrOfflineStrategy] using cached whisper context";
-        if (worker_->initWithContext(cached_ctx, cfg)) {
-            uses_cached_model_ = true;
-            return true;
+    // 创建 ASR 引擎
+    engine_ = createAsrEngine(engine_type_);
+    if (!engine_) return false;
+
+    // Whisper 引擎特有：优先从模型缓存获取已加载的上下文
+    if (engine_type_ == AsrEngineType::Whisper) {
+        auto* whisper = dynamic_cast<WhisperEngine*>(engine_.get());
+        whisper_context* cached_ctx = nullptr;
+        if (whisper && AsrModelCache::instance().tryAcquire(cached_ctx)) {
+            qDebug() << "[AsrOfflineStrategy] using cached whisper context";
+            if (whisper->initWithContext(cached_ctx, cfg)) {
+                uses_cached_model_ = true;
+                return true;
+            }
+            AsrModelCache::instance().release();
+            qDebug() << "[AsrOfflineStrategy] failed to init with cached context, loading own";
         }
-        AsrModelCache::instance().release();
-        qDebug() << "[AsrOfflineStrategy] failed to init with cached context, loading own";
     }
 
-    if (!worker_->init(cfg)) return false;
+    if (!engine_->init(cfg)) return false;
     return true;
 }
 
@@ -70,7 +76,7 @@ void AsrOfflineStrategy::reset() {
 
 }
 void AsrOfflineStrategy::release() {
-    if (worker_) worker_->release();
+    if (engine_) engine_->release();
     if (uses_cached_model_) {
         AsrModelCache::instance().release();
         uses_cached_model_ = false;
@@ -113,7 +119,7 @@ void AsrOfflineStrategy::run() {
 
         if (pcm.size() >= SEG * SR) {
             std::vector<SubtitleItem> subs;
-            worker_->recognize(pcm, subs, start_sec);
+            engine_->recognize(pcm, subs, start_sec);
             for (auto& s : subs) queue_->push(s);
             start_sec += SEG;
             pcm.clear();
@@ -122,7 +128,7 @@ void AsrOfflineStrategy::run() {
 
     if (!pcm.empty() && running_) {
         std::vector<SubtitleItem> subs;
-        worker_->recognize(pcm, subs, start_sec);
+        engine_->recognize(pcm, subs, start_sec);
         for (auto& s : subs) queue_->push(s);
     }
 

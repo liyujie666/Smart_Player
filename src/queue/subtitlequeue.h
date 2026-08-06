@@ -12,7 +12,9 @@
 struct SubtitleItem {
     double start_sec = 0.0;
     double end_sec = 0.0;
-    std::string text;
+    std::string text;              // 原始识别文本
+    std::string translated_text;   // 翻译后文本（为空则未翻译）
+    std::string language;// 检测到的语言码
 };
 
 class SubtitleQueue {
