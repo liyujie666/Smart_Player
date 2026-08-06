@@ -44,16 +44,13 @@ private:
 #if HAS_ONNXRUNTIME
     struct OrtContext {
         std::unique_ptr<Ort::Session> session;
-        std::unique_ptr<Ort::SessionOptions> session_options;
 
         std::vector<const char*> input_names;
         std::vector<const char*> output_names;
         std::vector<Ort::AllocatedStringPtr> input_name_ptrs;
         std::vector<Ort::AllocatedStringPtr> output_name_ptrs;
 
-        Ort::MemoryInfo memory_info{nullptr};
-        Ort::Value input_tensor{nullptr};
-        Ort::Value cache_tensor{nullptr};
+        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
         // 模型输入输出信息
         int64_t cache_dim = 0;        // 缓存维度

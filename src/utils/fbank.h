@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cmath>
+#include <complex>
 #include <cstring>
 
 // FBank（Mel Filterbank）特征提取器

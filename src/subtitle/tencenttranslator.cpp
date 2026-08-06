@@ -210,7 +210,7 @@ std::string TencentTranslator::generateSignature(const std::string& payload,
                                                   const std::string& timestamp) const {
     // TC3-HMAC-SHA256 签名算法
     // 参考：https://cloud.tencent.com/document/api/551/30636
-    QString date = QDateTime::fromSecsSinceEpoch(timestamp.toInt()).toUTC().toString("yyyy-MM-dd");
+    QString date = QDateTime::fromSecsSinceEpoch(QString::fromStdString(timestamp).toLongLong()).toUTC().toString("yyyy-MM-dd");
     QString service = "tmt";
 
     // 1. 拼接规范请求串

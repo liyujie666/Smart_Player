@@ -125,6 +125,14 @@ public slots:
     void setAsrEnabled(bool enabled);
     void setModelPath(const QString& path);
 
+    // 多引擎配置
+    void setAsrEngineType(AsrEngineType type) { if (m_core) m_core->setAsrEngineType(type); }
+    void setVadEnabled(bool enabled) { if (m_core) m_core->setVadEnabled(enabled); }
+    void setVadModelPath(const QString& path) { if (m_core) m_core->setVadModelPath(path); }
+    void setTranslatorType(TranslatorType type) { if (m_core) m_core->setTranslatorType(type); }
+    void setTranslateConfig(const TranslateConfig& cfg) { if (m_core) m_core->setTranslateConfig(cfg); }
+    void setTranslationEnabled(bool enabled) { if (m_core) m_core->setTranslationEnabled(enabled); }
+
 signals:
     // ===== 可观察属性 NOTIFY 信号（无参数版，View 收到后通过 getter 取最新值） =====
     // 这些信号刻意与 PlayerCore 同名/同签名，便于 MainWindow 渐进迁移：现有

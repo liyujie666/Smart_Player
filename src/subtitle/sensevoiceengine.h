@@ -50,8 +50,7 @@ private:
 #if HAS_ONNXRUNTIME
     struct Impl {
         std::unique_ptr<Ort::Session> session;
-        std::unique_ptr<Ort::SessionOptions> session_options;
-        Ort::MemoryInfo memory_info{nullptr};
+        Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
         std::vector<const char*> input_names;
         std::vector<const char*> output_names;

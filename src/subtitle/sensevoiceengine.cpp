@@ -34,11 +34,10 @@ bool SenseVoiceEngine::loadModel(const std::string& model_dir) {
     }
 
     impl_ = std::make_unique<Impl>();
-    impl_->session_options = std::make_unique<Ort::SessionOptions>(
-        OrtUtil::defaultSessionOptions(4));
+    Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(4);
     impl_->session = std::make_unique<Ort::Session>(
-        OrtUtil::instance().env(), model_path.toUtf8().constData(), *impl_->session_options);
-    impl_->memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        OrtUtil::instance().env(), model_path.toUtf8().constData(), opts);
+    // memory_info 已在 Impl 构造时创建
 
     // 读取输入输出名称
     size_t n_inputs = impl_->session->GetInputCount();

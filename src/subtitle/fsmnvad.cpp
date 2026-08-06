@@ -30,11 +30,10 @@ bool FsmnVad::loadModel(const std::string& model_dir) {
 
     // 创建 ONNX Runtime session
     ort_ctx_ = std::make_unique<OrtContext>();
-    auto& opts = ort_ctx_->session_options = std::make_unique<Ort::SessionOptions>(
-        OrtUtil::defaultSessionOptions(2));
+    Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(2);
     ort_ctx_->session = std::make_unique<Ort::Session>(
-        OrtUtil::instance().env(), model_path.toUtf8().constData(), *opts);
-    ort_ctx_->memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        OrtUtil::instance().env(), model_path.toUtf8().constData(), opts);
+    // memory_info 已在 OrtContext 构造时创建
 
     // 读取输入输出名称
     size_t n_inputs = ort_ctx_->session->GetInputCount();
@@ -132,7 +131,7 @@ float FsmnVad::inferChunk(const std::vector<float>& chunk) {
     // 输入: speech (1, chunk_len)
     std::vector<int64_t> speech_shape = {1, chunk_len};
     Ort::Value speech_tensor = Ort::Value::CreateTensor<float>(
-        *ort_ctx_->memory_info, const_cast<float*>(chunk.data()), chunk_len, speech_shape.data(), speech_shape.size());
+        ort_ctx_->memory_info, const_cast<float*>(chunk.data()), chunk_len, speech_shape.data(), speech_shape.size());
 
     // 输入: cache (1, cache_dim) 或 (1, cache_dim, 1)
     std::vector<int64_t> cache_shape;
@@ -142,7 +141,7 @@ float FsmnVad::inferChunk(const std::vector<float>& chunk) {
         cache_shape = {1, ort_ctx_->cache_dim};
     }
     Ort::Value cache_tensor = Ort::Value::CreateTensor<float>(
-        *ort_ctx_->memory_info, cache_.data(), cache_.size(), cache_shape.data(), cache_shape.size());
+        ort_ctx_->memory_info, cache_.data(), cache_.size(), cache_shape.data(), cache_shape.size());
 
     // 组装输入
     std::vector<Ort::Value> inputs;
