@@ -1,5 +1,7 @@
 #include "fsmnvad.h"
+#if HAS_ONNXRUNTIME
 #include "utils/onnxruntimeutil.h"
+#endif
 #include <QDebug>
 #include <cmath>
 #include <algorithm>

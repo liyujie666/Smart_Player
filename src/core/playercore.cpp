@@ -462,10 +462,14 @@ void PlayerCore::setAsrEnabled(bool enabled)
         asr_manager_->setVadEnabled(cfg.getVadEnabled());
         asr_manager_->setVadModelPath(cfg.getVadModelPath());
         asr_manager_->setTranslatorType(static_cast<TranslatorType>(cfg.getTranslatorType()));
-        asr_manager_->setTranslationEnabled(cfg.getTranslationEnabled());
+
+        // 翻译开关：优先用 config.ini 的值
+        // （UI 按钮状态在 setAsrEnabled 之前已经通过 toggled 信号写入了 config.ini）
+        bool transEnabled = cfg.getTranslationEnabled();
+        asr_manager_->setTranslationEnabled(transEnabled);
 
         // 翻译配置
-        if (cfg.getTranslationEnabled()) {
+        if (transEnabled) {
             TranslateConfig tcfg;
             tcfg.target_lang = cfg.getTranslateTargetLang().toStdString();
             tcfg.source_lang = "auto";
@@ -534,6 +538,38 @@ void PlayerCore::setTranslateConfig(const TranslateConfig& cfg)
 void PlayerCore::setTranslationEnabled(bool enabled)
 {
     asr_manager_->setTranslationEnabled(enabled);
+
+    // 如果 ASR 正在运行，重新初始化使翻译开关生效
+    if (asrEnabled_ && state_ != State::Stopped) {
+        asr_manager_->stop();
+        auto& cfg = ConfigManager::instance();
+
+        // 重新加载完整配置
+        asr_manager_->setAsrEngineType(static_cast<AsrEngineType>(cfg.getAsrEngineType()));
+        asr_manager_->setVadEnabled(cfg.getVadEnabled());
+        asr_manager_->setVadModelPath(cfg.getVadModelPath());
+        asr_manager_->setTranslatorType(static_cast<TranslatorType>(cfg.getTranslatorType()));
+        asr_manager_->setTranslationEnabled(enabled);
+
+        if (cfg.getTranslationEnabled()) {
+            TranslateConfig tcfg;
+            tcfg.target_lang = cfg.getTranslateTargetLang().toStdString();
+            tcfg.source_lang = "auto";
+            if (cfg.getTranslatorType() == 3) {
+                QString id = cfg.getTencentSecretId();
+                QString key = cfg.getTencentSecretKey();
+                if (!id.isEmpty() && !key.isEmpty()) {
+                    tcfg.api_key = (id + "|" + key).toStdString();
+                }
+            }
+            asr_manager_->setTranslateConfig(tcfg);
+        }
+
+        AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
+        if (asr_manager_->init(file_url_, demuxer_->mediaType(), as)) {
+            asr_manager_->start();
+        }
+    }
 }
 
 bool PlayerCore::isLiveStream() const

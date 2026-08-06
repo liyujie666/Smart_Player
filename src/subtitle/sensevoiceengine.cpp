@@ -1,6 +1,8 @@
 #include "sensevoiceengine.h"
+#if HAS_ONNXRUNTIME
 #include "utils/onnxruntimeutil.h"
 #include "utils/fbank.h"
+#endif
 #include <QDebug>
 #include <QFile>
 #include <QFileInfo>

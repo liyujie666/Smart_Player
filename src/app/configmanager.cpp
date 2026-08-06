@@ -30,8 +30,13 @@ ConfigManager::ConfigManager()
 
     // 多ASR引擎默认配置
     if (!settings_->contains("asr/engineType")) settings_->setValue("asr/engineType", 0); // 0=Whisper
-    if (!settings_->contains("asr/vadEnabled")) settings_->setValue("asr/vadEnabled", false);
-    if (!settings_->contains("asr/vadModelPath")) settings_->setValue("asr/vadModelPath", "");
+    if (!settings_->contains("asr/modelPath")) settings_->setValue("asr/modelPath", "");
+
+    // VAD 配置
+    if (!settings_->contains("vad/enabled")) settings_->setValue("vad/enabled", false);
+    if (!settings_->contains("vad/modelPath")) settings_->setValue("vad/modelPath", "");
+
+    // 翻译配置
     if (!settings_->contains("translate/enabled")) settings_->setValue("translate/enabled", false);
     if (!settings_->contains("translate/type")) settings_->setValue("translate/type", 3); // 3=TencentCloud
     if (!settings_->contains("translate/targetLang")) settings_->setValue("translate/targetLang", "zh");
@@ -189,16 +194,22 @@ void ConfigManager::setScreenshotSavePath(const QString& path)
 
 QString ConfigManager::getModelPath() const
 {
-    return settings_->value("modelPath", "").toString();
+    // 兼容：优先读 asr/modelPath，回退到旧 modelPath
+    QString v = settings_->value("asr/modelPath").toString();
+    if (v.isEmpty()) v = settings_->value("modelPath", "").toString();
+    return v;
 }
 void ConfigManager::setModelPath(const QString& path)
 {
+    settings_->setValue("asr/modelPath", path);
+    // 同步写入旧 key 保证向后兼容
     settings_->setValue("modelPath", path);
 }
 
 // 多ASR引擎配置
 int ConfigManager::getAsrEngineType() const
 {
+    // 兼容旧版本：优先读 asr/engineType，没有则默认 0
     return settings_->value("asr/engineType", 0).toInt();
 }
 void ConfigManager::setAsrEngineType(int type)
@@ -208,20 +219,25 @@ void ConfigManager::setAsrEngineType(int type)
 
 QString ConfigManager::getVadModelPath() const
 {
-    return settings_->value("asr/vadModelPath", "").toString();
+    // 兼容：优先读 vad/modelPath，回退到旧 asr/vadModelPath
+    QString v = settings_->value("vad/modelPath").toString();
+    if (v.isEmpty()) v = settings_->value("asr/vadModelPath", "").toString();
+    return v;
 }
 void ConfigManager::setVadModelPath(const QString& path)
 {
-    settings_->setValue("asr/vadModelPath", path);
+    settings_->setValue("vad/modelPath", path);
 }
 
 bool ConfigManager::getVadEnabled() const
 {
+    // 兼容：优先读 vad/enabled，回退到旧 asr/vadEnabled
+    if (settings_->contains("vad/enabled")) return settings_->value("vad/enabled").toBool();
     return settings_->value("asr/vadEnabled", false).toBool();
 }
 void ConfigManager::setVadEnabled(bool enabled)
 {
-    settings_->setValue("asr/vadEnabled", enabled);
+    settings_->setValue("vad/enabled", enabled);
 }
 
 // 翻译配置

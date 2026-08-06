@@ -1500,8 +1500,12 @@ void MainWindow::on_subtitleBtn_clicked()
             player_->setAsrEnabled(on);
         });
 
-        connect(subtitlePopup_->translateBtn_, &QPushButton::toggled, this, [](bool on){
+        connect(subtitlePopup_->translateBtn_, &QPushButton::toggled, this, [this](bool on){
             qDebug() << "中英翻译:" << on;
+            // 保存到配置（下次启动自动生效）
+            ConfigManager::instance().setTranslationEnabled(on);
+            // 实时生效
+            player_->setTranslationEnabled(on);
         });
 
         connect(subtitlePopup_->fontSizeSlider_, &QSlider::valueChanged, this, [this](int val){

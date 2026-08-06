@@ -1,10 +1,14 @@
 #ifndef ONNXRUNTIMEUTIL_H
 #define ONNXRUNTIMEUTIL_H
 
-#include <onnxruntime_cxx_api.h>
 #include <string>
 #include <vector>
 #include <QDebug>
+#include <QFile>
+#include <QTextStream>
+
+#if HAS_ONNXRUNTIME
+#include <onnxruntime_cxx_api.h>
 
 // ONNX Runtime 公共工具：单例 Env + 通用辅助函数
 class OrtUtil {
@@ -99,5 +103,7 @@ private:
     OrtUtil() : env_(ORT_LOGGING_LEVEL_WARNING, "SmartPlayer") {}
     Ort::Env env_;
 };
+
+#endif // HAS_ONNXRUNTIME
 
 #endif // ONNXRUNTIMEUTIL_H
