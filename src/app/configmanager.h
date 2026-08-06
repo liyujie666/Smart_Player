@@ -56,6 +56,33 @@ public:
     QString getModelPath() const;
     void setModelPath(const QString& path);
 
+    // 多ASR引擎配置
+    int getAsrEngineType() const;          // 0=Whisper, 1=SenseVoice, 2=CloudASR
+    void setAsrEngineType(int type);
+
+    QString getVadModelPath() const;
+    void setVadModelPath(const QString& path);
+
+    bool getVadEnabled() const;
+    void setVadEnabled(bool enabled);
+
+    // 翻译配置
+    int getTranslatorType() const;         // 0=GPT, 1=NLLB, 2=MarianMT, 3=TencentCloud
+    void setTranslatorType(int type);
+
+    bool getTranslationEnabled() const;
+    void setTranslationEnabled(bool enabled);
+
+    QString getTranslateTargetLang() const;
+    void setTranslateTargetLang(const QString& lang);
+
+    // 腾讯翻译密钥
+    QString getTencentSecretId() const;
+    void setTencentSecretId(const QString& id);
+
+    QString getTencentSecretKey() const;
+    void setTencentSecretKey(const QString& key);
+
     // AI 视频总结配置
     QString getSummaryApiKey() const;
     void setSummaryApiKey(const QString& key);

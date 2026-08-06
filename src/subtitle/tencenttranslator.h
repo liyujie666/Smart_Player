@@ -25,6 +25,9 @@ private:
     std::string callApi(const std::vector<std::string>& texts);
     std::string generateSignature(const std::string& payload, const std::string& timestamp) const;
 
+    // 从本地配置文件读取密钥
+    void loadConfigFromFile();
+
 private:
     TranslateConfig cfg_;
     bool ready_ = false;

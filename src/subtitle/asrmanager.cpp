@@ -29,12 +29,22 @@ void AsrManager::switchMode(Demuxer::MediaType type) {
         auto s = std::make_unique<AsrRealtimeStrategy>();
         s->setModel(model_path_);
         s->setAsrEngineType(asr_engine_type_);
+        s->setVadEnabled(vad_enabled_);
+        s->setVadModelPath(vad_model_path_);
+        s->setTranslatorType(translator_type_);
+        s->setTranslateConfig(translate_config_);
+        s->setTranslationEnabled(translation_enabled_);
         strategy_ = std::move(s);
         queue_.setMode(SubtitleQueue::Mode::Live);
     } else {
         auto s = std::make_unique<AsrOfflineStrategy>();
         s->setModel(model_path_);
         s->setAsrEngineType(asr_engine_type_);
+        s->setVadEnabled(vad_enabled_);
+        s->setVadModelPath(vad_model_path_);
+        s->setTranslatorType(translator_type_);
+        s->setTranslateConfig(translate_config_);
+        s->setTranslationEnabled(translation_enabled_);
         strategy_ = std::move(s);
         queue_.setMode(SubtitleQueue::Mode::Offline);
     }

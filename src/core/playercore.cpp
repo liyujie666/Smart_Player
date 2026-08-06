@@ -445,6 +445,7 @@ void PlayerCore::setAsrEnabled(bool enabled)
     if(state_ == State::Stopped) return;
 
     if (enabled) {
+        // 加载 ASR 模型路径
         if(asr_manager_->isModelPathEmpty()) {
             QString savedPath = ConfigManager::instance().getModelPath();
             if (!savedPath.isEmpty()) {
@@ -454,6 +455,33 @@ void PlayerCore::setAsrEnabled(bool enabled)
                 return;
             }
         }
+
+        // 从配置加载引擎/VAD/翻译设置
+        auto& cfg = ConfigManager::instance();
+        asr_manager_->setAsrEngineType(static_cast<AsrEngineType>(cfg.getAsrEngineType()));
+        asr_manager_->setVadEnabled(cfg.getVadEnabled());
+        asr_manager_->setVadModelPath(cfg.getVadModelPath());
+        asr_manager_->setTranslatorType(static_cast<TranslatorType>(cfg.getTranslatorType()));
+        asr_manager_->setTranslationEnabled(cfg.getTranslationEnabled());
+
+        // 翻译配置
+        if (cfg.getTranslationEnabled()) {
+            TranslateConfig tcfg;
+            tcfg.target_lang = cfg.getTranslateTargetLang().toStdString();
+            tcfg.source_lang = "auto";
+
+            // 腾讯翻译：从 config.ini 读取密钥，用 "id|key" 格式传入
+            if (cfg.getTranslatorType() == 3) {
+                QString id = cfg.getTencentSecretId();
+                QString key = cfg.getTencentSecretKey();
+                if (!id.isEmpty() && !key.isEmpty()) {
+                    tcfg.api_key = (id + "|" + key).toStdString();
+                }
+            }
+
+            asr_manager_->setTranslateConfig(tcfg);
+        }
+
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
         if(asr_manager_->init(file_url_, demuxer_->mediaType(), as)){
             asr_manager_->start();
@@ -476,6 +504,36 @@ void PlayerCore::setModelPath(const QString &path)
 bool PlayerCore::isAsrEnabled() const
 {
     return asrEnabled_;
+}
+
+void PlayerCore::setAsrEngineType(AsrEngineType type)
+{
+    asr_manager_->setAsrEngineType(type);
+}
+
+void PlayerCore::setVadEnabled(bool enabled)
+{
+    asr_manager_->setVadEnabled(enabled);
+}
+
+void PlayerCore::setVadModelPath(const QString& path)
+{
+    asr_manager_->setVadModelPath(path);
+}
+
+void PlayerCore::setTranslatorType(TranslatorType type)
+{
+    asr_manager_->setTranslatorType(type);
+}
+
+void PlayerCore::setTranslateConfig(const TranslateConfig& cfg)
+{
+    asr_manager_->setTranslateConfig(cfg);
+}
+
+void PlayerCore::setTranslationEnabled(bool enabled)
+{
+    asr_manager_->setTranslationEnabled(enabled);
 }
 
 bool PlayerCore::isLiveStream() const
@@ -993,7 +1051,12 @@ void PlayerCore::checkAndUpdateSubtitle()
     SubtitleItem sub = asr_manager_->queue()->getCurrent(now);
     if (sub.text != current_display_sub_.text) {
         current_display_sub_ = sub;
-        emit subtitleReady(QString::fromStdString(sub.text));
+        // 如果有译文，拼接为 "原文\n译文"
+        QString display = QString::fromStdString(sub.text);
+        if (!sub.translated_text.empty()) {
+            display += "\n" + QString::fromStdString(sub.translated_text);
+        }
+        emit subtitleReady(display);
     }
 }
 

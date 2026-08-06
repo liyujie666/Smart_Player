@@ -71,6 +71,14 @@ public:
     void setModelPath(const QString& path);
     bool isAsrEnabled() const;
 
+    // 多引擎配置
+    void setAsrEngineType(AsrEngineType type);
+    void setVadEnabled(bool enabled);
+    void setVadModelPath(const QString& path);
+    void setTranslatorType(TranslatorType type);
+    void setTranslateConfig(const TranslateConfig& cfg);
+    void setTranslationEnabled(bool enabled);
+
 
 
     // 获取信息

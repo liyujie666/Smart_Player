@@ -28,6 +28,16 @@ ConfigManager::ConfigManager()
     }
     if (!settings_->contains("modelPath")) settings_->setValue("modelPath", "");
 
+    // 多ASR引擎默认配置
+    if (!settings_->contains("asr/engineType")) settings_->setValue("asr/engineType", 0); // 0=Whisper
+    if (!settings_->contains("asr/vadEnabled")) settings_->setValue("asr/vadEnabled", false);
+    if (!settings_->contains("asr/vadModelPath")) settings_->setValue("asr/vadModelPath", "");
+    if (!settings_->contains("translate/enabled")) settings_->setValue("translate/enabled", false);
+    if (!settings_->contains("translate/type")) settings_->setValue("translate/type", 3); // 3=TencentCloud
+    if (!settings_->contains("translate/targetLang")) settings_->setValue("translate/targetLang", "zh");
+    if (!settings_->contains("translate/tencentSecretId")) settings_->setValue("translate/tencentSecretId", "");
+    if (!settings_->contains("translate/tencentSecretKey")) settings_->setValue("translate/tencentSecretKey", "");
+
     // AI 视频总结默认配置
     if (!settings_->contains("summary/apiKey")) settings_->setValue("summary/apiKey", "");
     if (!settings_->contains("summary/modelEndpoint")) {
@@ -184,6 +194,81 @@ QString ConfigManager::getModelPath() const
 void ConfigManager::setModelPath(const QString& path)
 {
     settings_->setValue("modelPath", path);
+}
+
+// 多ASR引擎配置
+int ConfigManager::getAsrEngineType() const
+{
+    return settings_->value("asr/engineType", 0).toInt();
+}
+void ConfigManager::setAsrEngineType(int type)
+{
+    settings_->setValue("asr/engineType", type);
+}
+
+QString ConfigManager::getVadModelPath() const
+{
+    return settings_->value("asr/vadModelPath", "").toString();
+}
+void ConfigManager::setVadModelPath(const QString& path)
+{
+    settings_->setValue("asr/vadModelPath", path);
+}
+
+bool ConfigManager::getVadEnabled() const
+{
+    return settings_->value("asr/vadEnabled", false).toBool();
+}
+void ConfigManager::setVadEnabled(bool enabled)
+{
+    settings_->setValue("asr/vadEnabled", enabled);
+}
+
+// 翻译配置
+int ConfigManager::getTranslatorType() const
+{
+    return settings_->value("translate/type", 3).toInt();
+}
+void ConfigManager::setTranslatorType(int type)
+{
+    settings_->setValue("translate/type", type);
+}
+
+bool ConfigManager::getTranslationEnabled() const
+{
+    return settings_->value("translate/enabled", false).toBool();
+}
+void ConfigManager::setTranslationEnabled(bool enabled)
+{
+    settings_->setValue("translate/enabled", enabled);
+}
+
+QString ConfigManager::getTranslateTargetLang() const
+{
+    return settings_->value("translate/targetLang", "zh").toString();
+}
+void ConfigManager::setTranslateTargetLang(const QString& lang)
+{
+    settings_->setValue("translate/targetLang", lang);
+}
+
+// 腾讯翻译密钥
+QString ConfigManager::getTencentSecretId() const
+{
+    return settings_->value("translate/tencentSecretId", "").toString();
+}
+void ConfigManager::setTencentSecretId(const QString& id)
+{
+    settings_->setValue("translate/tencentSecretId", id);
+}
+
+QString ConfigManager::getTencentSecretKey() const
+{
+    return settings_->value("translate/tencentSecretKey", "").toString();
+}
+void ConfigManager::setTencentSecretKey(const QString& key)
+{
+    settings_->setValue("translate/tencentSecretKey", key);
 }
 
 // Playlist

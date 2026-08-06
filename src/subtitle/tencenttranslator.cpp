@@ -9,23 +9,79 @@
 #include <QDateTime>
 #include <QCryptographicHash>
 #include <QMessageAuthenticationCode>
+#include <QStandardPaths>
+#include <QFile>
+#include <QDir>
 #include <QDebug>
 
 TencentTranslator::TencentTranslator() = default;
 TencentTranslator::~TencentTranslator() { release(); }
 
+void TencentTranslator::loadConfigFromFile() {
+    // 查找本地配置文件: config/tencent_translate.json
+    // 路径优先级: 工作目录 → 用户配置目录
+    QStringList search_paths = {
+        QDir::currentPath() + "/config/tencent_translate.json",
+        QDir::currentPath() + "/tencent_translate.json",
+        QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation) + "/tencent_translate.json",
+    };
+
+    for (const QString& path : search_paths) {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) continue;
+
+        QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        QJsonObject obj = doc.object();
+
+        if (secret_id_.empty()) {
+            secret_id_ = obj["secret_id"].toString().toStdString();
+        }
+        if (secret_key_.empty()) {
+            secret_key_ = obj["secret_key"].toString().toStdString();
+        }
+
+        if (!secret_id_.empty() && !secret_key_.empty()) {
+            qDebug() << "[TencentTranslator] config loaded from" << path;
+            return;
+        }
+    }
+}
+
 bool TencentTranslator::init(const TranslateConfig& cfg) {
     cfg_ = cfg;
 
-    // 从环境变量读取密钥
-    const char* id_env = std::getenv("TENCENT_SECRET_ID");
-    const char* key_env = std::getenv("TENCENT_SECRET_KEY");
+    // 优先级: 1. 代码传入的 api_key → 2. 环境变量 → 3. 本地配置文件
 
-    if (id_env) secret_id_ = id_env;
-    if (key_env) secret_key_ = key_env;
+    // 如果通过 TranslateConfig 传入了 secret_id 和 secret_key（用 "|" 分隔）
+    if (!cfg_.api_key.empty()) {
+        // api_key 格式: "secret_id|secret_key"
+        size_t sep = cfg_.api_key.find('|');
+        if (sep != std::string::npos) {
+            secret_id_ = cfg_.api_key.substr(0, sep);
+            secret_key_ = cfg_.api_key.substr(sep + 1);
+        }
+    }
+
+    // 环境变量
+    if (secret_id_.empty()) {
+        const char* id_env = std::getenv("TENCENT_SECRET_ID");
+        if (id_env) secret_id_ = id_env;
+    }
+    if (secret_key_.empty()) {
+        const char* key_env = std::getenv("TENCENT_SECRET_KEY");
+        if (key_env) secret_key_ = key_env;
+    }
+
+    // 本地配置文件
+    if (secret_id_.empty() || secret_key_.empty()) {
+        loadConfigFromFile();
+    }
 
     if (secret_id_.empty() || secret_key_.empty()) {
-        qDebug() << "[TencentTranslator] missing TENCENT_SECRET_ID or TENCENT_SECRET_KEY";
+        qDebug() << "[TencentTranslator] no API key found."
+                 << "Set via TranslateConfig.api_key (\"id|key\"),"
+                 << "env vars TENCENT_SECRET_ID/TENCENT_SECRET_KEY,"
+                 << "or config/tencent_translate.json";
         return false;
     }
 
@@ -62,6 +118,17 @@ TranslateResult TencentTranslator::translate(const std::string& text) {
 
     QJsonDocument doc = QJsonDocument::fromJson(QByteArray::fromStdString(response));
     QJsonObject resp = doc.object()["Response"].toObject();
+
+    // 检查 API 错误
+    QJsonObject error = resp["Error"].toObject();
+    if (!error.isEmpty()) {
+        QString err_code = error["Code"].toString();
+        QString err_msg = error["Message"].toString();
+        result.error_msg = QString("%1: %2").arg(err_code, err_msg).toStdString();
+        qDebug() << "[TencentTranslator] API error:" << err_code << err_msg;
+        return result;
+    }
+
     QString target_text = resp["TargetText"].toString().trimmed();
 
     if (!target_text.isEmpty()) {
@@ -90,7 +157,7 @@ std::vector<TranslateResult> TencentTranslator::translateBatch(const std::vector
 std::string TencentTranslator::callApi(const std::vector<std::string>& texts) {
     if (!network_ || texts.empty()) return "";
 
-    //构造 TextTranslate 请求体
+    // 构造 TextTranslate 请求体
     QJsonObject body;
     body["SourceText"] = QString::fromStdString(texts[0]);
     body["Source"] = QString::fromStdString(cfg_.source_lang);
@@ -106,6 +173,7 @@ std::string TencentTranslator::callApi(const std::vector<std::string>& texts) {
 
     QNetworkRequest request(QUrl(QString::fromStdString(cfg_.api_endpoint)));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
+    request.setRawHeader("Host", "tmt.tencentcloudapi.com");
     request.setRawHeader("X-TC-Action", "TextTranslate");
     request.setRawHeader("X-TC-Version", "2018-03-21");
     request.setRawHeader("X-TC-Timestamp", timestamp.toUtf8());
@@ -165,8 +233,8 @@ std::string TencentTranslator::generateSignature(const std::string& payload,
     QByteArray secret_signing = hmacSha256(secret_service, "tc3_request");
     QByteArray sign = hmacSha256(secret_signing, string_to_sign.toUtf8()).toHex();
 
-    // 4. 拼接 Authorization
-    QString auth = "TC3-HMAC-SHA256Credential=" + QString::fromStdString(secret_id_) +
+    // 4. 拼接 Authorization（注意：TC3-HMAC-SHA256 后有空格）
+    QString auth = "TC3-HMAC-SHA256 Credential=" + QString::fromStdString(secret_id_) +
         "/" + credential_scope + ", SignedHeaders=content-type;host, Signature=" + sign;
 
     return auth.toStdString();
