@@ -93,10 +93,10 @@ void AsrPipeline::stop() {
     // 分离线程而不是 join，避免阻塞主线程
     // 线程会在当前操作完成后自动退出
     if (vad_asr_thread_.joinable()) {
-        vad_asr_thread_.detach();
+        vad_asr_thread_.join();
     }
     if (translate_thread_.joinable()) {
-        translate_thread_.detach();
+        translate_thread_.join();
     }
 
     // 清理数据（线程会自行清理完成）
