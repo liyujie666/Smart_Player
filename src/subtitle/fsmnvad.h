@@ -92,6 +92,7 @@ private:
     double stream_base_sec_ = 0.0;
     bool base_initialized_ = false;
     int64_t total_frames_processed_ = 0;
+    bool diagnostic_logged_ = false;
 };
 
 #endif // FSMNVAD_H
