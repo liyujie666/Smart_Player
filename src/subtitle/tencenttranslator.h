@@ -34,6 +34,7 @@ private:
     std::unique_ptr<QNetworkAccessManager> network_;
     std::string secret_id_;
     std::string secret_key_;
+    std::string region_ = "ap-beijing";
 };
 
 #endif // TENCENTTRANSLATOR_H

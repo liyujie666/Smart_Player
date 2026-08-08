@@ -220,12 +220,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 # MinGW 下 Qt6EntryPoint 依赖 C runtime（msvcrt），需启动分组链接
-target_link_options(${PROJECT_NAME} PRIVATE
+if(MINGW)
+    target_link_options(${PROJECT_NAME} PRIVATE
     "LINKER:--start-group"
     "-Wl,--start-group"
     "LINKER:--end-group"
     "-Wl,--end-group"
-)
+    )
+endif()
 
 # Whisper +ggml：通过 INTERFACE target 链接（避免 -lwhisper 解析失败）
 target_link_libraries(${PROJECT_NAME} PRIVATE whisper_import)
@@ -254,6 +256,26 @@ foreach(dll ${DEPS_DLLS})
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             ${dll}
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
+    )
+endforeach()
+
+# 复制 ASR/VAD 模型并保留 dependencies/models 下的目录结构。
+# 配置中的相对路径以可执行文件目录为基准。
+set(DEPS_MODELS_DIR "${DEPS_DIR}/models")
+file(GLOB_RECURSE MODEL_FILES CONFIGURE_DEPENDS
+    LIST_DIRECTORIES false
+    "${DEPS_MODELS_DIR}/asr/*"
+    "${DEPS_MODELS_DIR}/vad/*"
+)
+foreach(model_file ${MODEL_FILES})
+    file(RELATIVE_PATH model_rel_path "${DEPS_MODELS_DIR}" "${model_file}")
+    get_filename_component(model_rel_dir "${model_rel_path}" DIRECTORY)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/models/${model_rel_dir}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${model_file}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/models/${model_rel_path}"
     )
 endforeach()
 

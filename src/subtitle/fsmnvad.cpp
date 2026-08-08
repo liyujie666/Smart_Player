@@ -20,7 +20,7 @@ FsmnVad::~FsmnVad() { release(); }
 
 bool FsmnVad::loadModel(const std::string& model_dir) {
     QString dir = QString::fromStdString(model_dir);
-    QString model_path = dir + "/model.onnx";
+    QString model_path = dir + "/model_quant.onnx";
     QString mvn_path = dir + "/am.mvn";
 
     // 检查文件存在
@@ -136,6 +136,7 @@ bool FsmnVad::init(const VadConfig& cfg) {
     total_frames_processed_ = 0;
     residual_pcm_.clear();
     base_initialized_ = false;
+    diagnostic_logged_ = false;
     for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 
     ready_ = true;
@@ -158,6 +159,7 @@ void FsmnVad::reset() {
     residual_pcm_.clear();
     completed_segments_.clear();
     base_initialized_ = false;
+    diagnostic_logged_ = false;
     prob_history_.clear();
     for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 }
@@ -260,7 +262,8 @@ std::vector<float> FsmnVad::inferFeatures(const std::vector<float>& flat_feats, 
         }
     }
 
-    // 输出0: logits (1, T, 2)，逐帧 softmax 得 speech 概率
+    // 输出0是多类声学 PDF（随附模型为 248 类），配置中的 sil_pdf_ids=[0]。
+    // 语音后验应为 1 - P(silence)，不能只对类别 0、1 做二分类 softmax。
     auto shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
     if (shape.size() < 3 || shape[2] < 2) return {};
 
@@ -270,12 +273,16 @@ std::vector<float> FsmnVad::inferFeatures(const std::vector<float>& flat_feats, 
 
     std::vector<float> probs(T);
     for (int t = 0; t < T; ++t) {
-        float non_speech = logits[(size_t)t * C + 0];
-        float speech = logits[(size_t)t * C + 1];
-        float m = std::max(non_speech, speech);
-        float e_ns = std::exp(non_speech - m);
-        float e_s = std::exp(speech - m);
-        probs[t] = e_s / (e_ns + e_s);
+        const float* row = logits + (size_t)t * C;
+        float max_logit = row[0];
+        for (int c = 1; c < C; ++c) max_logit = std::max(max_logit, row[c]);
+
+        double denominator = 0.0;
+        for (int c = 0; c < C; ++c) {
+            denominator += std::exp((double)row[c] - max_logit);
+        }
+        const double silence_prob = std::exp((double)row[0] - max_logit) / denominator;
+        probs[t] = std::clamp((float)(1.0 - silence_prob), 0.0f, 1.0f);
     }
     return probs;
 }
@@ -301,7 +308,6 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
     const size_t samples_per_infer = (size_t)infer_chunk_frames_ * frame_shift;
 
     size_t pos = 0;
-    int infer_count = 0;
     while (pos + samples_per_infer + overlap <= audio.size()) {
         std::vector<float> seg(audio.begin() + pos,
                                audio.begin() + pos + samples_per_infer + overlap);
@@ -333,9 +339,9 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
                 updateState(smoothed, frame_time);
                 total_frames_processed_++;
             }
-            infer_count++;
-            // 首次推理打印诊断信息（含特征统计，帮助验证 FBank 正确性）
-            if (infer_count == 1) {
+            // 每个流只打印一次诊断信息，避免 10 秒块边界造成“first infer”假象
+            if (!diagnostic_logged_) {
+                diagnostic_logged_ = true;
                 float max_p = *std::max_element(probs.begin(), probs.end());
                 // 特征统计：前 5 个值、均值、方差
                 float feat_min = feats[0], feat_max = feats[0], feat_sum = 0;
@@ -397,6 +403,18 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
 
     int silence_frames_threshold = cfg_.min_silence_ms / frame_shift_ms_;
     if (silence_frames_threshold <= 0) silence_frames_threshold = 30;
+
+    if (state_ == State::Speech && cfg_.max_speech_ms > 0 &&
+        (frame_time - current_speech_start_) * 1000.0 >= cfg_.max_speech_ms) {
+        VadSegment seg;
+        seg.start_sec = current_speech_start_;
+        seg.end_sec = frame_time;
+        completed_segments_.push_back(seg);
+        qDebug() << "[FsmnVad] max-length segment @" << seg.start_sec << "-"
+                 << seg.end_sec << "s";
+        current_speech_start_ = frame_time;
+        current_speech_end_ = frame_time;
+    }
 
     switch (state_) {
     case State::Silence:

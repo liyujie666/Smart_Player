@@ -4,37 +4,45 @@
 #include <vector>
 #include <cmath>
 #include <complex>
-#include <cstring>
-#include <cstdlib>
+#include <algorithm>
 
 // FBank（Mel Filterbank）特征提取器
 // 用于将 PCM 音频转换为 80 维 Mel 频谱特征
 // 参数: 16kHz, 25ms 窗口, 10ms 步进, 80 维
 class FbankExtractor {
 public:
+    static constexpr float kPi = 3.14159265358979323846f;
+
     struct Config {
         int sample_rate = 16000;
         int frame_length = 400;     // 25ms @ 16kHz
         int frame_shift = 160;      // 10ms @ 16kHz
         int n_mels = 80;
-    float preemphasis = 0.97f;
-    float dither = 1.0f;         // 添加抖动，避免静音段特征全零
-    bool use_power = true;      // 用功率谱而非幅度谱
-    float energy_floor = 1.0f;
+        int fft_size = 512;
+        float preemphasis = 0.97f;
+        float dither = 0.0f;
+        bool remove_dc_offset = true;
+        bool use_power = true;
+        float pcm_scale = 32768.0f;
+        float energy_floor = 1.0e-10f;
     };
 
     FbankExtractor() = default;
     ~FbankExtractor() = default;
 
-    void init(const Config& cfg = {}) {
+    void init() {
+        init(Config{});
+    }
+
+    void init(const Config& cfg) {
         cfg_ = cfg;
-        n_fft_ = 512;   // FFT 点数补零到 2 的幂次（标准做法），frame_length=400 时补 112 个零
+        n_fft_ = std::max(cfg_.fft_size, cfg_.frame_length);
         // 计算 Mel 滤波器组
         computeMelFilterbank();
         // 预计算汉明窗
         hamming_window_.resize(cfg_.frame_length);
         for (int i = 0; i < cfg_.frame_length; ++i) {
-            hamming_window_[i] = 0.54f - 0.46f * std::cos(2.0f * M_PI * i / (cfg_.frame_length - 1));
+            hamming_window_[i] = 0.54f - 0.46f * std::cos(2.0f * kPi * i / (cfg_.frame_length - 1));
         }
     }
 
@@ -51,24 +59,27 @@ public:
 
         std::vector<std::vector<float>> features(num_frames);
         std::vector<float> frame(cfg_.frame_length);
-        std::vector<float> power_spectrum(n_fft_ / 2 + 1);  // 257 bins @ n_fft=512
+        std::vector<float> power_spectrum(n_fft_ / 2 + 1);
 
         for (int f = 0; f < num_frames; ++f) {
             int start = f * cfg_.frame_shift;
 
-            // 1. 取帧 + dither（添加微弱随机噪声，避免静音段特征全零）
+            // 1. 转换到 FunASR/Kaldi 使用的 int16 幅值范围
             for (int i = 0; i < cfg_.frame_length; ++i) {
-                frame[i] = pcm[start + i];
-                if (cfg_.dither > 0) {
-                    // 简单均匀分布 dither，范围 [-dither, +dither]
-                    float r = ((float)rand() / RAND_MAX - 0.5f) * 2.0f * cfg_.dither;
-                    frame[i] += r;
-                }
+                frame[i] = pcm[start + i] * cfg_.pcm_scale;
             }
 
-            // 2. 预加重（第一帧不做预加重，保持原值）
+            // 2. 去直流分量并预加重
+            if (cfg_.remove_dc_offset) {
+                float mean = 0.0f;
+                for (float sample : frame) mean += sample;
+                mean /= static_cast<float>(frame.size());
+                for (float& sample : frame) sample -= mean;
+            }
+
             if (cfg_.preemphasis > 0) {
                 float prev = frame[0];
+                frame[0] *= (1.0f - cfg_.preemphasis);
                 for (int i = 1; i < cfg_.frame_length; ++i) {
                     float cur = frame[i];
                     frame[i] = cur - cfg_.preemphasis * prev;
@@ -118,44 +129,32 @@ public:
 
 private:
     void computeMelFilterbank() {
-        int n_filters = cfg_.n_mels;
-        int n_fft_bins = n_fft_ / 2 + 1;
-        float mel_min = hzToMel(0);
-        float mel_max = hzToMel(cfg_.sample_rate / 2);
+        const int n_filters = cfg_.n_mels;
+        const int n_fft_bins = n_fft_ / 2 + 1;
+        const float mel_min = hzToMel(0.0f);
+        const float mel_max = hzToMel(cfg_.sample_rate / 2.0f);
 
-        // 标准 HTK/Kaldi 方式：生成 n_filters+2 个等间距 Mel 点
-        // 第 m 个滤波器: left=points[m], center=points[m+1], right=points[m+2]
+        mel_filters_.assign(n_filters, {});
         std::vector<float> mel_points(n_filters + 2);
         for (int i = 0; i < n_filters + 2; ++i) {
             mel_points[i] = mel_min + (mel_max - mel_min) * i / (n_filters + 1);
         }
 
-        mel_filters_.resize(n_filters);
-
         for (int m = 0; m < n_filters; ++m) {
-            float hz_left = melToHz(mel_points[m]);
-            float hz_center = melToHz(mel_points[m + 1]);
-            float hz_right = melToHz(mel_points[m + 2]);
+            const float left = mel_points[m];
+            const float center = mel_points[m + 1];
+            const float right = mel_points[m + 2];
 
-            int bin_left = (int)std::round(hz_left * n_fft_ / cfg_.sample_rate);
-            int bin_center = (int)std::round(hz_center * n_fft_ / cfg_.sample_rate);
-            int bin_right = (int)std::round(hz_right * n_fft_ / cfg_.sample_rate);
-
-            // 确保至少有一个 bin 的宽度
-            if (bin_right <= bin_left) bin_right = bin_left + 1;
-            if (bin_center <= bin_left) bin_center = bin_left + 1;
-            if (bin_center >= bin_right) bin_center = bin_right - 1;
-
-            for (int k = bin_left; k <= bin_right && k < n_fft_bins; ++k) {
+            for (int k = 0; k < n_fft_bins; ++k) {
+                const float hz = static_cast<float>(k) * cfg_.sample_rate / n_fft_;
+                const float mel = hzToMel(hz);
                 float weight = 0.0f;
-                if (k < bin_center) {
-                    weight = (float)(k - bin_left) / (bin_center - bin_left);
-                } else if (k <= bin_right) {
-                    weight = (float)(bin_right - k) / (bin_right - bin_center);
+                if (mel > left && mel <= center) {
+                    weight = (mel - left) / (center - left);
+                } else if (mel > center && mel < right) {
+                    weight = (right - mel) / (right - center);
                 }
-                if (weight > 0) {
-                    mel_filters_[m].push_back({k, weight});
-                }
+                if (weight > 0.0f) mel_filters_[m].push_back({k, weight});
             }
         }
     }
@@ -163,22 +162,35 @@ private:
     float hzToMel(float hz) { return 1127.0f * std::log1p(hz / 700.0f); }
     float melToHz(float mel) { return 700.0f * (std::exp(mel / 1127.0f) - 1.0f); }
 
-    // DFT 计算功率谱（补零到 n_fft，只需正频率部分）
+    // 计算零填充到 n_fft 后的正频率功率谱
     void computePowerSpectrum(const std::vector<float>& frame, std::vector<float>& power) {
-        int n = n_fft_;
-        int half = n / 2 + 1;
-        int frame_len = (int)frame.size();
+        std::vector<std::complex<float>> spectrum(n_fft_, {0.0f, 0.0f});
+        for (size_t i = 0; i < frame.size(); ++i) spectrum[i] = frame[i];
 
-        for (int k = 0; k < half; ++k) {
-            std::complex<float> sum(0, 0);
-            // 只遍历 frame 的实际长度（补零部分贡献为 0，跳过）
-            for (int i = 0; i < frame_len; ++i) {
-                float angle = -2.0f * (float)M_PI * k * i / n;
-                sum += std::complex<float>(frame[i] * std::cos(angle),
-                                           frame[i] * std::sin(angle));
+        for (int i = 1, j = 0; i < n_fft_; ++i) {
+            int bit = n_fft_ >> 1;
+            for (; j & bit; bit >>= 1) j ^= bit;
+            j ^= bit;
+            if (i < j) std::swap(spectrum[i], spectrum[j]);
+        }
+
+        for (int len = 2; len <= n_fft_; len <<= 1) {
+            const float angle = -2.0f * kPi / len;
+            const std::complex<float> step(std::cos(angle), std::sin(angle));
+            for (int i = 0; i < n_fft_; i += len) {
+                std::complex<float> w(1.0f, 0.0f);
+                for (int j = 0; j < len / 2; ++j) {
+                    const auto even = spectrum[i + j];
+                    const auto odd = spectrum[i + j + len / 2] * w;
+                    spectrum[i + j] = even + odd;
+                    spectrum[i + j + len / 2] = even - odd;
+                    w *= step;
+                }
             }
-            power[k] = std::norm(sum) / n;
-            if (k > 0 && k < half - 1) power[k] *= 2;
+        }
+
+        for (int k = 0; k <= n_fft_ / 2; ++k) {
+            power[k] = cfg_.use_power ? std::norm(spectrum[k]) : std::abs(spectrum[k]);
         }
     }
 

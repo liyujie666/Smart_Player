@@ -40,6 +40,10 @@ void TencentTranslator::loadConfigFromFile() {
             secret_key_ = obj["secret_key"].toString().toStdString();
         }
 
+        if (region_.empty()) {
+            region_ = obj["region"].toString().toStdString();
+        }
+
         if (!secret_id_.empty() && !secret_key_.empty()) {
             qDebug() << "[TencentTranslator] config loaded from" << path;
             return;
@@ -70,6 +74,9 @@ bool TencentTranslator::init(const TranslateConfig& cfg) {
     if (secret_key_.empty()) {
         const char* key_env = std::getenv("TENCENT_SECRET_KEY");
         if (key_env) secret_key_ = key_env;
+    }
+    if (const char* region_env = std::getenv("TENCENT_REGION")) {
+        if (*region_env != '\0') region_ = region_env;
     }
 
     // 本地配置文件
@@ -176,6 +183,7 @@ std::string TencentTranslator::callApi(const std::vector<std::string>& texts) {
     request.setRawHeader("Host", "tmt.tencentcloudapi.com");
     request.setRawHeader("X-TC-Action", "TextTranslate");
     request.setRawHeader("X-TC-Version", "2018-03-21");
+    request.setRawHeader("X-TC-Region", QByteArray::fromStdString(region_));
     request.setRawHeader("X-TC-Timestamp", timestamp.toUtf8());
     request.setRawHeader("Authorization", QByteArray::fromStdString(signature));
 

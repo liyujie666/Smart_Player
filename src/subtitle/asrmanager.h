@@ -69,6 +69,7 @@ void subtitleReady(const SubtitleItem& item);
   void engineError(const QString& error);
 
 private:
+    bool initInternal(const QString& url, Demuxer::MediaType type, AVStream* audio);
     PipelineConfig buildPipelineConfig() const;
 
 private:

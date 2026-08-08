@@ -60,6 +60,7 @@ private:
         int n_mels = 80;       // 模型输入维度（含 LFR 拼接）
         int vocab_size = 0;
         int lfr_m = 7;         // LFR 拼接帧数（model_feat_dim / 80）
+        int lfr_n = 6;         // SenseVoice 配置中的 LFR 下采样率
 
         // 输入索引（SenseVoice 4 输入），-1 表示该输入不存在
         int idx_speech = 0;
@@ -77,6 +78,8 @@ private:
     int n_mels_ = 80;
     int frame_length_ = 400;   // 25ms
     int frame_shift_ = 160;    // 10ms
+    std::vector<float> cmvn_mean_;
+    std::vector<float> cmvn_var_;
 
     AsrEngineConfig cfg_;
     bool ready_ = false;

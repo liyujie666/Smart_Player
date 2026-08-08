@@ -26,6 +26,11 @@ void AsrManager::warmUp() {
 
 bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* audio) {
     stop();
+    std::lock_guard<std::mutex> lock(init_mtx_);
+    return initInternal(url, type, audio);
+}
+
+bool AsrManager::initInternal(const QString& url, Demuxer::MediaType type, AVStream* audio) {
     last_type_ = type;
 
     // 1. 创建音频源
@@ -114,7 +119,8 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
     }
 
     // 3. 创建 Pipeline 并注入引擎（不重新加载模型）
-    pipeline_ = std::make_unique<AsrPipeline>(this);
+    pipeline_ = std::make_unique<AsrPipeline>();
+    pipeline_->moveToThread(thread());
     pipeline_->setSource(std::move(source));
 
     if (playback_pos_fn_) {
@@ -156,38 +162,38 @@ void AsrManager::initAsync(const QString& url, Demuxer::MediaType type, AVStream
     AVStream* audio_copy = audio;
 
     init_thread_ = std::thread([this, url_copy, type_copy, audio_copy]() {
-        qDebug() << "[AsrManager] async init started";
+        try {
+            qDebug() << "[AsrManager] async init started";
 
-        // 先停止旧 pipeline（在工作线程做，避免主线程阻塞）
-        {
-            std::lock_guard<std::mutex> lock(init_mtx_);
-            if (pipeline_) {
-                pipeline_->stop();
-                pipeline_.reset();
+            bool ok = false;
+            {
+                std::lock_guard<std::mutex> lock(init_mtx_);
+                if (init_cancelling_) return;
+
+                if (pipeline_) {
+                    pipeline_->stop();
+                    pipeline_.reset();
+                }
+                queue_.clear();
+                ok = initInternal(url_copy, type_copy, audio_copy);
             }
-            queue_.clear();
-        }
 
-        if (init_cancelling_) return;
+            if (init_cancelling_) return;
 
-        // 同步执行 init
-        bool ok = false;
-        {
-            std::lock_guard<std::mutex> lock(init_mtx_);
-            ok = init(url_copy, type_copy, audio_copy);
-        }
-
-        if (init_cancelling_) return;
-
-        if (ok) {
-            qDebug() << "[AsrManager] async init success, starting pipeline";
-            std::lock_guard<std::mutex> lock(init_mtx_);
-            if (pipeline_ && !init_cancelling_) {
-                pipeline_->start();
+            if (ok) {
+                qDebug() << "[AsrManager] async init success, starting pipeline";
+                std::lock_guard<std::mutex> lock(init_mtx_);
+                if (pipeline_ && !init_cancelling_) pipeline_->start();
+            } else {
+                qWarning() << "[AsrManager] async init failed";
+                emit engineError("ASR init failed");
             }
-        } else {
-            qWarning() << "[AsrManager] async init failed";
-            emit engineError("ASR init failed");
+        } catch (const std::exception& e) {
+            qCritical() << "[AsrManager] async init exception:" << e.what();
+            emit engineError(QString("ASR init exception: %1").arg(e.what()));
+        } catch (...) {
+            qCritical() << "[AsrManager] async init unknown exception";
+            emit engineError("ASR init unknown exception");
         }
     });
 }

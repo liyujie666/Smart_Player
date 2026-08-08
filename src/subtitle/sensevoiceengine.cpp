@@ -70,17 +70,30 @@ bool SenseVoiceEngine::loadModel(const std::string& model_dir) {
         }
     }
     impl_->n_mels = model_feat_dim;
-    impl_->lfr_m = lfr_m;
 
     // FBank 维度始终是 80（不随模型输入维度变化）
     // LFR 拼接帧数 = model_feat_dim / 80
     n_mels_ = 80;
-    int lfr_m = model_feat_dim / n_mels_;
+    const int lfr_m = model_feat_dim / n_mels_;
     if (lfr_m <= 0 || model_feat_dim % n_mels_ != 0) {
         qWarning() << "[SenseVoice] unexpected model_feat_dim=" << model_feat_dim
                    << ", cannot derive LFR m from n_mels=" << n_mels_;
         return false;
     }
+    impl_->lfr_m = lfr_m;
+
+    const QString mvn_path = dir + "/am.mvn";
+    auto cmvn = OrtUtil::loadCmvn(mvn_path.toStdString());
+    if ((int)cmvn.mean.size() != model_feat_dim ||
+        (int)cmvn.variance.size() != model_feat_dim) {
+        qWarning() << "[SenseVoice] CMVN dim mismatch: mean=" << cmvn.mean.size()
+                   << "var=" << cmvn.variance.size()
+                   << "expected=" << model_feat_dim;
+        impl_.reset();
+        return false;
+    }
+    cmvn_mean_ = std::move(cmvn.mean);
+    cmvn_var_ = std::move(cmvn.variance);
 
     // 记录各输入索引（SenseVoice 有 4 个输入：speech, speech_lengths, language, textnorm）
     for (size_t i = 0; i < n_inputs; ++i) {
@@ -182,6 +195,8 @@ void SenseVoiceEngine::release() {
 #if HAS_ONNXRUNTIME
     impl_.reset();
 #endif
+    cmvn_mean_.clear();
+    cmvn_var_.clear();
     token_table_.clear();
     ready_ = false;
 }
@@ -209,14 +224,17 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
     const int T_raw = (int)fbank_feats.size();
     const int n_mels = n_mels_;        // 80
     const int lfr_m = impl_->lfr_m;    // 7
-    const int pad = (lfr_m - 1) / 2;   // LFR 左侧上下文帧数
+    const int lfr_n = impl_->lfr_n;    // 6
+    const int pad = (lfr_m - 1) / 2;
     const int feat_dim = n_mels * lfr_m;  // 560
+    const int num_frames = (T_raw + lfr_n - 1) / lfr_n;
 
-    // 2. LFR(m, 1)：左侧复制首帧 padding，取 m 帧窗口拼接
-    std::vector<float> flat_features((size_t)T_raw * feat_dim, 0.0f);
-    for (int i = 0; i < T_raw; ++i) {
+    // 2. LFR(m, n)：左侧复制首帧，按 n 帧步进拼接 m 帧窗口
+    std::vector<float> flat_features((size_t)num_frames * feat_dim, 0.0f);
+    for (int i = 0; i < num_frames; ++i) {
+        const int center = i * lfr_n;
         for (int k = 0; k < lfr_m; ++k) {
-            int src = i - pad + k;
+            int src = center - pad + k;
             if (src < 0) src = 0;
             if (src >= T_raw) src = T_raw - 1;
             const auto& f = fbank_feats[src];
@@ -225,17 +243,23 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
         }
     }
 
-    int num_frames = T_raw;
+    // 3. 模型随附 am.mvn: (feature + AddShift) * Rescale
+    for (int i = 0; i < num_frames; ++i) {
+        float* row = flat_features.data() + (size_t)i * feat_dim;
+        for (int d = 0; d < feat_dim; ++d) {
+            row[d] = (row[d] + cmvn_mean_[d]) * cmvn_var_[d];
+        }
+    }
 
-    // 3. 按输入索引构造全部输入张量
+    // 4. 按输入索引构造全部输入张量
     int n_inputs = (int)impl_->input_names.size();
     std::vector<Ort::Value> inputs;
-    std::vector<int64_t> lengths_data = {num_frames};
+    std::vector<int32_t> lengths_data = {num_frames};
     std::vector<int64_t> lengths_shape = {1};
 
     // 预分配所有输入需要的张量数据（保持在生命周期内）
-    std::vector<int64_t> language_data = {0};   // 0=auto
-    std::vector<int64_t> textnorm_data = {15};  // 15=带标点/反归一化
+    std::vector<int32_t> language_data = {0};   // 0=auto
+    std::vector<int32_t> textnorm_data = {15};  // 15=带标点/反归一化
     std::vector<int64_t> scalar_shape = {1};
 
     for (int i = 0; i < n_inputs; ++i) {
@@ -245,15 +269,15 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
                 impl_->memory_info, flat_features.data(), flat_features.size(),
                 speech_shape.data(), speech_shape.size()));
         } else if (i == impl_->idx_lengths) {
-            inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+            inputs.push_back(Ort::Value::CreateTensor<int32_t>(
                 impl_->memory_info, lengths_data.data(), lengths_data.size(),
                 lengths_shape.data(), lengths_shape.size()));
         } else if (i == impl_->idx_language) {
-            inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+            inputs.push_back(Ort::Value::CreateTensor<int32_t>(
                 impl_->memory_info, language_data.data(), language_data.size(),
                 scalar_shape.data(), scalar_shape.size()));
         } else if (i == impl_->idx_textnorm) {
-            inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+            inputs.push_back(Ort::Value::CreateTensor<int32_t>(
                 impl_->memory_info, textnorm_data.data(), textnorm_data.size(),
                 scalar_shape.data(), scalar_shape.size()));
         }
@@ -291,9 +315,14 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
 
     // 获取实际输出长度（如果有第二个输出）
     int actual_T = output_T;
-    if (outputs.size() >= 2) {
-        int64_t* lens_ptr = outputs[1].GetTensorMutableData<int64_t>();
-        actual_T = (int)lens_ptr[0];
+    if (outputs.size() >= 2 && outputs[1].IsTensor()) {
+        const auto lens_type = outputs[1].GetTensorTypeAndShapeInfo().GetElementType();
+        if (lens_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
+            actual_T = outputs[1].GetTensorData<int32_t>()[0];
+        } else if (lens_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+            actual_T = static_cast<int>(outputs[1].GetTensorData<int64_t>()[0]);
+        }
+        actual_T = std::clamp(actual_T, 0, output_T);
     }
 
     // Greedy CTC 解码
@@ -321,12 +350,23 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
     }
 
     // 6. Token → 文本
+    if (token_ids.empty()) {
+        qWarning() << "[SenseVoice] CTC produced only blank tokens:"
+                   << "input_frames=" << num_frames
+                   << "output_frames=" << actual_T;
+        return false;
+    }
+
     std::string text = ctcDecode(token_ids.data(), (int)token_ids.size());
 
     // 7. 后处理（去除标签）
     text = postProcess(text);
 
-    if (text.empty()) return false;
+    if (text.empty()) {
+        qWarning() << "[SenseVoice] decoded tokens contain no speech text:"
+                   << "token_count=" << token_ids.size();
+        return false;
+    }
 
     SubtitleItem item;
     item.text = text;
@@ -363,6 +403,14 @@ std::string SenseVoiceEngine::postProcess(const std::string& text) {
     std::string result = text;
     std::regex tag_pattern("<\\|[^|]*\\|>");
     result = std::regex_replace(result, tag_pattern, "");
+
+    // SentencePiece 使用 U+2581 标记词边界
+    const std::string word_boundary = "\xE2\x96\x81";
+    size_t pos = 0;
+    while ((pos = result.find(word_boundary, pos)) != std::string::npos) {
+        result.replace(pos, word_boundary.size(), " ");
+        ++pos;
+    }
 
     // 去除首尾空白
     size_t start = result.find_first_not_of(" \t\n\r");

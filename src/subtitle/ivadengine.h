@@ -17,6 +17,7 @@ struct VadConfig {
     float threshold_exit = 0.3f;      // 退出语音阈值（低阈值，迟滞防振荡）
     int min_silence_ms = 300;         // 最短静音间隔（用于断句）
     int min_speech_ms = 250;          // 最短语音段长度
+    int max_speech_ms = 20000;        // 单段最长语音，避免 ASR 输入无限增长
     int smoothing_window = 3;         // 概率滑动平均窗口（帧数，0=关闭）
     int sample_rate = 16000;
 };

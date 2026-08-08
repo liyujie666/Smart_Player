@@ -1,9 +1,11 @@
+#define NOMINMAX
 #include "asrpipeline.h"
 #include "whisperengine.h"
 #include "asrmodelcache.h"
 #include "utils/asrutils.h"
 #include <QDebug>
 #include <chrono>
+#include <cmath>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -94,6 +96,8 @@ void AsrPipeline::stop() {
     // 清理
     ring_.clear();
     last_text_.clear();
+    vad_pcm_buffer_.clear();
+    vad_pcm_initialized_ = false;
     {
         std::lock_guard<std::mutex> lock(translate_mtx_);
         translate_queue_ = {};
@@ -103,8 +107,10 @@ void AsrPipeline::stop() {
 void AsrPipeline::reset() {
     ring_.clear();
     last_text_.clear();
+    vad_pcm_buffer_.clear();
+    vad_pcm_initialized_ = false;
     if (vad_) vad_->reset();
- if (asr_) asr_->reset();
+    if (asr_) asr_->reset();
     {
         std::lock_guard<std::mutex> lock(translate_mtx_);
         translate_queue_ = {};
@@ -138,8 +144,7 @@ void AsrPipeline::feedPcm(const std::vector<float>& pcm, double base_sec) {
     if (!asr_ || !asr_->isReady()) return;
 
     if (config_.enable_vad && vad_ && vad_->isReady()) {
-        auto segments = vad_->process(pcm, base_sec);
-        processVadSegments(segments, pcm, base_sec);
+        processVadAudio(pcm, base_sec);
     } else {
         processDirectAsr(pcm, base_sec);
     }
@@ -171,11 +176,16 @@ void AsrPipeline::enableTranslation(bool enable) {
 }
 
 void AsrPipeline::enableVad(bool enable) {
-    config_.enable_vad = enable;
-    if (enable && !vad_) {
-        vad_ = createVadEngine(config_.vad_type);
-        if (vad_) vad_->init(config_.vad_config);
+    if (enable && (!vad_ || !vad_->isReady())) {
+        qWarning() << "[AsrPipeline] Cannot enable VAD: injected engine is not ready";
+        config_.enable_vad = false;
+        return;
     }
+
+    config_.enable_vad = enable;
+    vad_pcm_buffer_.clear();
+    vad_pcm_initialized_ = false;
+    if (enable) vad_->reset();
 }
 
 std::string AsrPipeline::currentAsrEngineName() const {
@@ -214,13 +224,10 @@ void AsrPipeline::vadAsrLoop() {
    }
 
         if (config_.enable_vad && vad_ && vad_->isReady()) {
-            auto segments = vad_->process(buf, start_time);
-     if (!segments.empty()) {
-       processVadSegments(segments, buf, start_time);
-    }
- } else {
-   // 无VAD，直接做ASR
-      processDirectAsr(buf, start_time);
+            processVadAudio(buf, start_time);
+        } else {
+            // 无VAD，直接做ASR
+            processDirectAsr(buf, start_time);
         }
 
    if (use_source) {
@@ -231,31 +238,74 @@ void AsrPipeline::vadAsrLoop() {
     }
 
     // 刷新 VAD 残余
-    if (vad_ && vad_->isReady()) {
-        auto segments = vad_->flush();
-      if (!segments.empty() && !buf.empty()) {
-            double flush_time = use_source ? source_->headTimeSec() : ring_.head_time_sec();
-            processVadSegments(segments, buf, flush_time);
-        }
+    if (config_.enable_vad && vad_ && vad_->isReady()) {
+        processVadSegments(vad_->flush());
     }
 }
 
-void AsrPipeline::processVadSegments(const std::vector<VadSegment>& segments,
-                                      const std::vector<float>& pcm,
-                                      double base_sec) {
-    const int SR = 16000;
+void AsrPipeline::processVadAudio(const std::vector<float>& pcm, double base_sec) {
+    constexpr int SR = 16000;
+    constexpr double kTimestampToleranceSec = 0.02;
+    if (pcm.empty() || !vad_ || !vad_->isReady()) return;
 
-    for (const auto& seg : segments) {
-        // 从PCM中截取VAD检测到的语音段
-        int start_sample = (int)((seg.start_sec - base_sec) * SR);
-        int end_sample = (int)((seg.end_sec - base_sec) * SR);
+    size_t skip = 0;
+    if (!vad_pcm_initialized_) {
+        vad_pcm_base_sec_ = base_sec;
+        vad_pcm_initialized_ = true;
+    } else {
+        const double buffered_end = vad_pcm_base_sec_ +
+            (double)vad_pcm_buffer_.size() / SR;
+        const double delta = base_sec - buffered_end;
+        if (delta > kTimestampToleranceSec) {
+            qWarning() << "[AsrPipeline] VAD audio discontinuity:" << delta << "s, resetting";
+            vad_->reset();
+            vad_pcm_buffer_.clear();
+            vad_pcm_base_sec_ = base_sec;
+        } else if (delta < 0.0) {
+            skip = (size_t)std::llround(-delta * SR);
+            if (skip >= pcm.size()) return;
+        }
+    }
 
-        start_sample = std::max(0, start_sample);
-        end_sample = std::min((int)pcm.size(), end_sample);
+    const double new_audio_base = base_sec + (double)skip / SR;
+    std::vector<float> new_audio(pcm.begin() + skip, pcm.end());
+    vad_pcm_buffer_.insert(vad_pcm_buffer_.end(), new_audio.begin(), new_audio.end());
 
-        if (end_sample <= start_sample) continue;
+    auto segments = vad_->process(new_audio, new_audio_base);
+    qDebug() << "[AsrPipeline] VAD audio @" << new_audio_base << "s"
+             << "samples=" << new_audio.size()
+             << "segments=" << segments.size();
+    processVadSegments(segments);
 
-        std::vector<float> speech_pcm(pcm.begin() + start_sample, pcm.begin() + end_sample);
+    // FSMN 配置限制单段为 20 秒；保留 30 秒足以覆盖跨块闭合及静音拖尾。
+    constexpr size_t kMaxBufferedSamples = 30 * SR;
+    if (vad_pcm_buffer_.size() > kMaxBufferedSamples) {
+        const size_t remove_count = vad_pcm_buffer_.size() - kMaxBufferedSamples;
+        vad_pcm_buffer_.erase(vad_pcm_buffer_.begin(),
+                              vad_pcm_buffer_.begin() + remove_count);
+        vad_pcm_base_sec_ += (double)remove_count / SR;
+    }
+}
+
+void AsrPipeline::processVadSegments(const std::vector<VadSegment>& segments) {
+    constexpr int SR = 16000;
+
+    for (size_t i = 0; i < segments.size(); ++i) {
+        const auto& seg = segments[i];
+        const int64_t start_sample = std::llround((seg.start_sec - vad_pcm_base_sec_) * SR);
+        const int64_t end_sample = std::llround((seg.end_sec - vad_pcm_base_sec_) * SR);
+
+        if (start_sample < 0 || end_sample > (int64_t)vad_pcm_buffer_.size() ||
+            end_sample <= start_sample) {
+            qWarning() << "[AsrPipeline] VAD segment outside PCM history:"
+                       << seg.start_sec << "-" << seg.end_sec
+                       << "buffer_base=" << vad_pcm_base_sec_
+                       << "buffer_samples=" << vad_pcm_buffer_.size();
+            continue;
+        }
+
+        std::vector<float> speech_pcm(vad_pcm_buffer_.begin() + start_sample,
+                                      vad_pcm_buffer_.begin() + end_sample);
 
         std::vector<SubtitleItem> results;
         bool ok = asr_->recognize(speech_pcm, results, seg.start_sec);
@@ -267,13 +317,13 @@ void AsrPipeline::processVadSegments(const std::vector<VadSegment>& segments,
                  << "@" << seg.start_sec << "-" << seg.end_sec << "s"
                  << "pcm=" << speech_pcm.size() << "samples"
                  << "results=" << results.size();
+
         for (auto& item : results) {
             if (item.text != last_text_) {
                 last_text_ = item.text;
                 queue_->push(item);
                 emit subtitleReady(item);
 
-                // 送入翻译队列
                 if (config_.enable_translation && translator_) {
                     std::lock_guard<std::mutex> lock(translate_mtx_);
                     translate_queue_.push(item);
@@ -381,12 +431,7 @@ void AsrPipeline::offlineLoop() {
         std::vector<float> chunk(pcm.begin(), pcm.begin() + n);
 
         if (config_.enable_vad && vad_ && vad_->isReady()) {
-            auto segments = vad_->process(chunk, media_time);
-            qDebug() << "[AsrPipeline] chunk @" << media_time << "s"
-                     << "vad_segments=" << segments.size();
-            if (!segments.empty()) {
-                processVadSegments(segments, chunk, media_time);
-            }
+            processVadAudio(chunk, media_time);
         } else {
             qDebug() << "[AsrPipeline] chunk @" << media_time << "s"
                      << "direct_asr (no VAD)";
@@ -433,6 +478,11 @@ void AsrPipeline::offlineLoop() {
         if (yield_ms > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(yield_ms));
         }
+    }
+
+    if (config_.enable_vad && vad_ && vad_->isReady() &&
+        source_->isEof() && !source_->isCancelled()) {
+        processVadSegments(vad_->flush());
     }
 
     running_ = false;

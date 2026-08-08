@@ -95,10 +95,11 @@ private:
     void offlineLoop();   // 离线模式处理线程（pull 音频源）
     void translateLoop();    // 翻译处理线程
 
-    // 内部：对VAD输出的语音段进行ASR
-    void processVadSegments(const std::vector<VadSegment>& segments,
-        const std::vector<float>& pcm,
-      double base_sec);
+    // 将连续音频送入 VAD，并保留跨块语音段所需的 PCM
+    void processVadAudio(const std::vector<float>& pcm, double base_sec);
+
+    // 内部：对 VAD 输出的语音段进行 ASR
+    void processVadSegments(const std::vector<VadSegment>& segments);
 
     // 内部：直接做ASR（无VAD时的回退路径）
     void processDirectAsr(const std::vector<float>& pcm, double base_sec);
@@ -125,6 +126,11 @@ private:
     // VAD + ASR 线程
     std::thread vad_asr_thread_;
     std::atomic<bool> running_{false};
+
+    // 连续 VAD 可能在后续输入块才闭合语音段，需要保留对应的历史 PCM
+    std::vector<float> vad_pcm_buffer_;
+    double vad_pcm_base_sec_ = 0.0;
+    bool vad_pcm_initialized_ = false;
 
     // 翻译线程（异步，不阻塞字幕原文显示）
     std::thread translate_thread_;
