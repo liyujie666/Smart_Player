@@ -1,4 +1,4 @@
-#include "fsmnvad.h"
+﻿#include "fsmnvad.h"
 #if HAS_ONNXRUNTIME
 #include "utils/onnxruntimeutil.h"
 #include "utils/fbank.h"
@@ -136,7 +136,6 @@ bool FsmnVad::init(const VadConfig& cfg) {
     total_frames_processed_ = 0;
     residual_pcm_.clear();
     base_initialized_ = false;
-    diagnostic_logged_ = false;
     for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 
     ready_ = true;
@@ -335,10 +334,6 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
                 double frame_time = stream_base_sec_ +
                     (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
                 updateState(smoothed, frame_time);
-                // Speech 状态下每 50 帧（500ms）采样一次概率，用于诊断断句效果
-                if (state_ == State::Speech && (total_frames_processed_ % 50) == 0) {
-                    qDebug() << "[FsmnVad] speech prob @" << frame_time
-                             << "s prob=" << smoothed;
                 }
                 total_frames_processed_++;
             }
