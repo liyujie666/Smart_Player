@@ -152,7 +152,7 @@ void AsrManager::initAsync(const QString& url, Demuxer::MediaType type, AVStream
     // 等待之前的异步初始化完成
     if (init_thread_.joinable()) {
         init_cancelling_ = true;
-        init_thread_.join();
+        init_thread_.detach();
         init_cancelling_ = false;
     }
 
@@ -206,7 +206,7 @@ void AsrManager::stop() {
     // 取消异步初始化（如果在进行中）
     init_cancelling_ = true;
     if (init_thread_.joinable()) {
-        init_thread_.join();
+        init_thread_.detach();
     }
     init_cancelling_ = false;
 

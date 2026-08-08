@@ -85,15 +85,21 @@ void AsrPipeline::start() {
 }
 
 void AsrPipeline::stop() {
+    // 先设置停止标志
     running_ = false;
-    if (vad_asr_thread_.joinable()) vad_asr_thread_.join();
-
-    // 停止翻译线程
     translate_running_ = false;
     translate_cv_.notify_all();
-    if (translate_thread_.joinable()) translate_thread_.join();
 
-    // 清理
+    // 分离线程而不是 join，避免阻塞主线程
+    // 线程会在当前操作完成后自动退出
+    if (vad_asr_thread_.joinable()) {
+        vad_asr_thread_.detach();
+    }
+    if (translate_thread_.joinable()) {
+        translate_thread_.detach();
+    }
+
+    // 清理数据（线程会自行清理完成）
     ring_.clear();
     last_text_.clear();
     vad_pcm_buffer_.clear();
