@@ -478,9 +478,9 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             mainFont.setFamily("Microsoft YaHei");
             QFontMetrics mainFm(mainFont);
 
-            // 原文用较小字体（主字体的 0.7 倍）
+            // 原文用较小字体（主字体的 0.75 倍）
             QFont subFont;
-            int subFontSize = qMax(10, (int)(subtitleFontSize_ * 0.7));
+            int subFontSize = qMax(10, (int)(subtitleFontSize_ * 0.75));
             subFont.setPointSize(subFontSize);
             subFont.setBold(false);
             subFont.setFamily("Microsoft YaHei");
@@ -490,7 +490,8 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             const int paddingV = 6;
             const int mainLineHeight = mainFm.height();
             const int subLineHeight = subFm.height();
-            const int maxLineCount = 4;
+            const int gap = 4;  // 译文与原文之间的间距
+            const int maxLineCount = 6;
             const int maxWidth = qMax(width_ * 2 / 3, 200);
 
             // 自动换行辅助
@@ -530,8 +531,9 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             }
             subWidth += paddingH * 2;
 
-            int totalLines = mainLines.size() + subLines.size();
-            int subHeight = mainLines.size() * mainLineHeight + subLines.size() * subLineHeight + paddingV * 2;
+            int subHeight = mainLines.size() * mainLineHeight
+                          + (subLines.isEmpty() ? 0 : gap + subLines.size() * subLineHeight)
+                          + paddingV * 2;
 
             qreal pr = devicePixelRatio();
             int prSubWidth = qRound(subWidth * pr);
@@ -560,7 +562,7 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             if (!subLines.isEmpty()) {
                 painter.setPen(QColor(180, 180, 180, 200));
                 painter.setFont(subFont);
-                y += subFm.ascent() - subFm.descent() / 2;  // 稍微紧凑
+                y += gap + subFm.ascent();  // 间距 + 原文首行 baseline
                 for (const QString& l : subLines) {
                     painter.drawText(paddingH, y, l);
                     y += subLineHeight;
