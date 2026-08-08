@@ -124,6 +124,7 @@ private:
     void saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format);
     double getSpeedFromIndex(int speedIndex);
     void checkAndUpdateSubtitle();
+    void applyAsrConfig(bool overrideTransEnabled = false, bool transEnabled = false);
 
 private:
 
