@@ -59,6 +59,12 @@ private:
 
         int n_mels = 80;
         int vocab_size = 0;
+
+        // 输入索引（SenseVoice 4 输入），-1 表示该输入不存在
+        int idx_speech = 0;
+        int idx_lengths = 1;
+        int idx_language = -1;
+        int idx_textnorm = -1;
     };
     std::unique_ptr<Impl> impl_;
 #endif

@@ -62,10 +62,22 @@ bool SenseVoiceEngine::loadModel(const std::string& model_dir) {
         }
     }
 
+    // 记录各输入索引（SenseVoice 有 4 个输入：speech, speech_lengths, language, textnorm）
+    for (size_t i = 0; i < n_inputs; ++i) {
+        std::string name = impl_->input_names[i];
+        if (name == "speech" || name == "speech_batch") impl_->idx_speech = (int)i;
+        else if (name.find("length") != std::string::npos) impl_->idx_lengths = (int)i;
+        else if (name.find("language") != std::string::npos || name.find("lang") != std::string::npos) impl_->idx_language = (int)i;
+        else if (name.find("textnorm") != std::string::npos || name.find("norm") != std::string::npos) impl_->idx_textnorm = (int)i;
+    }
+
+    QStringList in_names, out_names;
+    for (auto& n : impl_->input_names) in_names << n;
+    for (auto& n : impl_->output_names) out_names << n;
     qDebug() << "[SenseVoice] Model loaded:" << model_path
              << "n_mels=" << n_mels_
-             << "n_inputs=" << n_inputs
-             << "n_outputs=" << n_outputs;
+             << "inputs:" << in_names
+             << "outputs:" << out_names;
 
     return true;
 }
@@ -183,33 +195,55 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
         }
     }
 
-    // 3. 创建输入张量
-    std::vector<int64_t> speech_shape = {1, num_frames, n_mels};
-    Ort::Value speech_tensor = Ort::Value::CreateTensor<float>(
-        impl_->memory_info, flat_features.data(), flat_features.size(),
-        speech_shape.data(), speech_shape.size());
-
+    // 3. 按输入索引构造全部输入张量
+    int n_inputs = (int)impl_->input_names.size();
+    std::vector<Ort::Value> inputs;
     std::vector<int64_t> lengths_data = {num_frames};
     std::vector<int64_t> lengths_shape = {1};
-    Ort::Value lengths_tensor = Ort::Value::CreateTensor<int64_t>(
-        impl_->memory_info, lengths_data.data(), lengths_data.size(),
-        lengths_shape.data(), lengths_shape.size());
 
-    // 4. 推理
-    std::vector<Ort::Value> inputs;
-    inputs.push_back(std::move(speech_tensor));
-    // 如果模型需要 speech_lengths 输入
-    if (impl_->input_names.size() >= 2) {
-        inputs.push_back(std::move(lengths_tensor));
+    // 预分配所有输入需要的张量数据（保持在生命周期内）
+    std::vector<int64_t> language_data = {0};   // 0=auto
+    std::vector<int64_t> textnorm_data = {15};  // 15=带标点/反归一化
+    std::vector<int64_t> scalar_shape = {1};
+
+    for (int i = 0; i < n_inputs; ++i) {
+        if (i == impl_->idx_speech) {
+            std::vector<int64_t> speech_shape = {1, num_frames, n_mels};
+            inputs.push_back(Ort::Value::CreateTensor<float>(
+                impl_->memory_info, flat_features.data(), flat_features.size(),
+                speech_shape.data(), speech_shape.size()));
+        } else if (i == impl_->idx_lengths) {
+            inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+                impl_->memory_info, lengths_data.data(), lengths_data.size(),
+                lengths_shape.data(), lengths_shape.size()));
+        } else if (i == impl_->idx_language) {
+            inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+                impl_->memory_info, language_data.data(), language_data.size(),
+                scalar_shape.data(), scalar_shape.size()));
+        } else if (i == impl_->idx_textnorm) {
+            inputs.push_back(Ort::Value::CreateTensor<int64_t>(
+                impl_->memory_info, textnorm_data.data(), textnorm_data.size(),
+                scalar_shape.data(), scalar_shape.size()));
+        }
     }
 
-    auto outputs = impl_->session->Run(
-        Ort::RunOptions{nullptr},
-        impl_->input_names.data(),
-        inputs.data(),
-        inputs.size(),
-        impl_->output_names.data(),
-        impl_->output_names.size());
+    // 4. 推理（try-catch 防止 ONNX 异常导致 abort）
+    std::vector<Ort::Value> outputs;
+    try {
+        outputs = impl_->session->Run(
+            Ort::RunOptions{nullptr},
+            impl_->input_names.data(),
+            inputs.data(),
+            inputs.size(),
+            impl_->output_names.data(),
+            impl_->output_names.size());
+    } catch (const Ort::Exception& e) {
+        qWarning() << "[SenseVoice] ONNX Run failed:" << e.what();
+        return false;
+    } catch (const std::exception& e) {
+        qWarning() << "[SenseVoice] inference failed:" << e.what();
+        return false;
+    }
 
     if (outputs.empty()) return false;
 
