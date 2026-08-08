@@ -14,8 +14,8 @@ struct VadSegment {
 struct VadConfig {
     std::string model_path;
     float threshold = 0.5f;           // 进入语音阈值（高阈值，避免误触发）
-    float threshold_exit = 0.5f;      // 退出语音阈值（与进入相同，248类Softmax后概率偏高）
-    int min_silence_ms = 300;         // 最短静音间隔（用于断句）
+    float threshold_exit = 0.7f;      // 退出语音阈值（248类Softmax后概率偏高，需较高退出阈值）
+    int min_silence_ms = 150;         // 最短静音间隔（150ms即可断句，更敏感）
     int min_speech_ms = 250;          // 最短语音段长度
     int max_speech_ms = 8000;         // 单段最长语音，超过强制断句
     int smoothing_window = 3;         // 概率滑动平均窗口（帧数，0=关闭）

@@ -337,6 +337,11 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
                 double frame_time = stream_base_sec_ +
                     (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
                 updateState(smoothed, frame_time);
+                // Speech 状态下每 50 帧（500ms）采样一次概率，用于诊断断句效果
+                if (state_ == State::Speech && (total_frames_processed_ % 50) == 0) {
+                    qDebug() << "[FsmnVad] speech prob @" << frame_time
+                             << "s prob=" << smoothed;
+                }
                 total_frames_processed_++;
             }
             // 每个流只打印一次诊断信息，避免 10 秒块边界造成“first infer”假象
