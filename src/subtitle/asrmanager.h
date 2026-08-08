@@ -31,6 +31,9 @@ public:
     void sendAudioFrame(AVFrame* frame);
     SubtitleQueue* queue() { return &queue_; }
 
+    /// Seek ASR 管线到指定位置（秒）
+    void seekTo(double pos_sec);
+
     void setModelPath(const QString& path);
     bool isModelPathEmpty() const { return model_path_.isEmpty(); }
 

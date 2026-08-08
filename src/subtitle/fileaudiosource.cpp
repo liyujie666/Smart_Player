@@ -171,3 +171,27 @@ AVStream* FileAudioSource::audioStream() const {
     }
     return nullptr;
 }
+
+bool FileAudioSource::seekTo(double pos_sec) {
+    if (!demux_ || !dec_) return false;
+
+    // seek 内部 demuxer 到目标位置（微秒）
+    int64_t pos_us = (int64_t)(pos_sec * 1000000.0);
+    int ret = demux_->seek(pos_us);
+    if (ret < 0) {
+        qWarning() << "[FileAudioSource] seek failed:" << pos_sec << "s";
+        return false;
+    }
+
+    // flush decoder 缓存
+    dec_->flush();
+
+    // 清空 PCM 缓冲，重置时间
+    pcm_buf_.clear();
+    pcm_read_pos_ = 0;
+    current_time_sec_ = pos_sec;
+    eof_ = false;
+
+    qDebug() << "[FileAudioSource] seeked to" << pos_sec << "s";
+    return true;
+}

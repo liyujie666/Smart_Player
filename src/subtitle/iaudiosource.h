@@ -80,6 +80,11 @@ virtual double headTimeSec() const { return 0.0; }
 
     /// 是否已被取消
     virtual bool isCancelled() const = 0;
+
+    /// Seek 到指定位置（秒）
+    /// Pull 模式：seek 内部 demuxer；Push 模式：清空缓冲
+    /// 返回是否成功
+    virtual bool seekTo(double pos_sec) { (void)pos_sec; return false; }
 };
 
 #endif // IAUDIOSOURCE_H

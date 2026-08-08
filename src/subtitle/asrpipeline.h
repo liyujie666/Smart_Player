@@ -69,6 +69,9 @@ public:
     void enableTranslation(bool enable);
     void enableVad(bool enable);
 
+    /// Seek 到指定位置：seek 音频源 + reset VAD/ASR 状态 + 清空字幕队列
+    void seekTo(double pos_sec);
+
     // 注入外部引擎（AsrManager 持有，Pipeline 引用，不负责析构）
     void setVadEngine(IVadEngine* v) { vad_ = v; }
     void setAsrEngine(IAsrEngine* a) { asr_ = a; }

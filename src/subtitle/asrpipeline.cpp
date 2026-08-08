@@ -192,6 +192,32 @@ void AsrPipeline::enableVad(bool enable) {
     if (enable) vad_->reset();
 }
 
+void AsrPipeline::seekTo(double pos_sec) {
+    // 1. Seek 音频源到目标位置
+    if (source_) {
+        source_->seekTo(pos_sec);
+    }
+
+    // 2. 清空内部缓冲和引擎状态
+    ring_.clear();
+    last_text_.clear();
+    vad_pcm_buffer_.clear();
+    vad_pcm_initialized_ = false;
+    if (vad_) vad_->reset();
+    if (asr_) asr_->reset();
+    {
+        std::lock_guard<std::mutex> lock(translate_mtx_);
+        translate_queue_ = {};
+    }
+
+    // 3. 清空字幕队列（旧字幕时间戳已无效）
+    if (queue_) {
+        queue_->clear();
+    }
+
+    qDebug() << "[AsrPipeline] seekTo" << pos_sec << "s";
+}
+
 std::string AsrPipeline::currentAsrEngineName() const {
     return asr_ ? asr_->name() : "None";
 }

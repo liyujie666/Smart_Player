@@ -230,6 +230,15 @@ void AsrManager::reset() {
     if (pipeline_) pipeline_->reset();
 }
 
+void AsrManager::seekTo(double pos_sec) {
+    if (pipeline_) {
+        pipeline_->seekTo(pos_sec);
+    } else {
+        // Pipeline 未运行，仅清空队列
+        queue_.clear();
+    }
+}
+
 void AsrManager::sendAudioFrame(AVFrame* frame) {
     if (pipeline_) pipeline_->feedAudio(frame);
 }

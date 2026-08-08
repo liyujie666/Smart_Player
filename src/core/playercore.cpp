@@ -409,7 +409,13 @@ void PlayerCore::seek(int64_t pos_us)
         state_ = Running;
         cond_.wakeAll();
     }
-    asr_manager_->reset();
+
+    // Seek ASR 管线：seek 音频源 + 重置 VAD/ASR + 清空字幕队列
+    double pos_sec = (double)pos_us / 1000000.0;
+    asr_manager_->seekTo(pos_sec);
+    current_display_sub_ = {};
+    emit subtitleReady("");
+
     qDebug() << "seek to " << pos_us << "us";
 }
 

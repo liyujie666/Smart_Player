@@ -37,6 +37,9 @@ public:
     void cancel() override { cancelled_ = true; }
     bool isCancelled() const override { return cancelled_; }
 
+    /// Push 模式：seek 后清空缓冲，新帧由外部 push 进来
+    bool seekTo(double pos_sec) override;
+
     /// 清空缓冲区
     void clear();
 

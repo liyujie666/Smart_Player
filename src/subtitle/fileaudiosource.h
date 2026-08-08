@@ -33,6 +33,9 @@ public:
     void cancel() override { cancelled_ = true; }
     bool isCancelled() const override { return cancelled_; }
 
+    /// Seek 到指定位置（秒）：seek 内部 demuxer、flush decoder、清空 PCM 缓冲
+    bool seekTo(double pos_sec) override;
+
     /// 获取音频流（供 Pipeline 初始化 resampler 规格参考，如不需要可忽略）
     AVStream* audioStream() const;
 

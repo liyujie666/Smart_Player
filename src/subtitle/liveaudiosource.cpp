@@ -90,3 +90,12 @@ void LiveAudioSource::consume(size_t n) {
 void LiveAudioSource::clear() {
     ring_.clear();
 }
+
+bool LiveAudioSource::seekTo(double pos_sec) {
+    // Push 模式：播放器的 demuxer 已 seek，新帧会从正确位置送入
+    // 只需清空内部 ring buffer 中的旧数据
+    (void)pos_sec;
+    ring_.clear();
+    qDebug() << "[LiveAudioSource] seekTo" << pos_sec << "s, ring cleared";
+    return true;
+}
