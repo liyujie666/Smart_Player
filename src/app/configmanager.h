@@ -60,6 +60,10 @@ public:
     int getAsrEngineType() const;          // 0=Whisper, 1=SenseVoice, 2=CloudASR
     void setAsrEngineType(int type);
 
+    // 字幕开关持久化（程序级，跨视频保持）
+    bool getAsrEnabled() const;
+    void setAsrEnabled(bool enabled);
+
     QString getVadModelPath() const;
     void setVadModelPath(const QString& path);
 

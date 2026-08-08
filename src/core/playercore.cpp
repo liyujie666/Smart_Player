@@ -345,6 +345,10 @@ void PlayerCore::stop()
     video_stream_idx_ = -1;
     hasAudio_ = false;
     hasVideo_ = false;
+
+    // ASR 已随 stop 停止，重置标志以便切换视频后可重新启动
+    asrEnabled_ = false;
+
     emit stateChanged();
 
     qDebug() << "播放器：已停止，资源已释放";
@@ -545,15 +549,15 @@ void PlayerCore::setTranslateConfig(const TranslateConfig& cfg)
 
 void PlayerCore::setTranslationEnabled(bool enabled)
 {
-    asr_manager_->setTranslationEnabled(enabled);
+    // 同步配置到 ConfigManager，再通过 AsrManager 动态切换
+    applyAsrConfig(true, enabled);
 
-    // 如果 ASR 正在运行，重新初始化使翻译开关生效
     if (asrEnabled_ && state_ != State::Stopped) {
-        asr_manager_->stop();
-        applyAsrConfig(true, enabled);
-
-        AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
-        asr_manager_->initAsync(file_url_, demuxer_->mediaType(), as);
+        // Pipeline 已在运行：动态切换翻译线程，不重建管线（避免主线程卡顿）
+        asr_manager_->applyTranslationToggle(enabled);
+    } else {
+        // Pipeline 未运行：仅保存配置标志，下次 ASR 启动时自然生效
+        asr_manager_->setTranslationEnabled(enabled);
     }
 }
 

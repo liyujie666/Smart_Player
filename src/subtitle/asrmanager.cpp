@@ -252,6 +252,42 @@ void AsrManager::setTranslationEnabled(bool enabled) {
     translation_enabled_ = enabled;
 }
 
+void AsrManager::applyTranslationToggle(bool enabled) {
+    translation_enabled_ = enabled;
+
+    // 如果当前没有运行中的 Pipeline（ASR 未开启或正在初始化），
+    // 仅更新配置标志，等下次 init 时自然生效
+    if (!pipeline_) {
+        qDebug() << "[AsrManager] applyTranslationToggle: no running pipeline, flag only";
+        return;
+    }
+
+    // 开启翻译：确保翻译引擎已缓存
+    if (enabled) {
+        // 如果翻译引擎尚未缓存，需要懒加载
+        if (!cached_translator_) {
+            auto cfg = buildPipelineConfig();
+            if (cfg.enable_translation) {
+                qDebug() << "[AsrManager] lazy-loading translator on toggle-on";
+                cached_translator_ = createTranslator(cfg.translator_type);
+                if (cached_translator_ && !cached_translator_->init(cfg.translate_config)) {
+                    qDebug() << "[AsrManager] lazy translator init failed, translation disabled";
+                    cached_translator_.reset();
+                    return;
+                } else {
+                    cached_translator_type_ = cfg.translator_type;
+                    // 注入到现有 Pipeline
+                    pipeline_->setTranslatorEngine(cached_translator_.get());
+                    pipeline_->setTranslator(cfg.translator_type, cfg.translate_config);
+                }
+            }
+        }
+    }
+
+    // 动态启停翻译线程，不重建管线
+    pipeline_->enableTranslation(enabled);
+}
+
 void AsrManager::setPipelineConfig(const PipelineConfig& cfg) {
     asr_engine_type_ = cfg.asr_type;
     vad_enabled_ = cfg.enable_vad;

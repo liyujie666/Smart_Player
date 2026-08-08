@@ -166,12 +166,16 @@ void AsrPipeline::enableTranslation(bool enable) {
     config_.enable_translation = enable;
 
     if (enable && translator_ && translator_->isReady() && !translate_running_) {
+        // 开启翻译前，确保旧线程已退出（旧线程在 translate_running_=false 后会自行结束）
+        if (translate_thread_.joinable()) translate_thread_.join();
         translate_running_ = true;
         translate_thread_ = std::thread(&AsrPipeline::translateLoop, this);
     } else if (!enable) {
+        // 关闭翻译：仅设置标志并通知，不 join（避免主线程阻塞）
+        // 翻译线程会在当前 translate() 调用返回后检查 translate_running_ 并退出
+        // 旧线程的 join 延迟到下次开启或 stop() 时执行
         translate_running_ = false;
         translate_cv_.notify_all();
-        if (translate_thread_.joinable()) translate_thread_.join();
     }
 }
 

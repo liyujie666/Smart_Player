@@ -31,6 +31,7 @@ ConfigManager::ConfigManager()
     // 多ASR引擎默认配置
     if (!settings_->contains("asr/engineType")) settings_->setValue("asr/engineType", 0); // 0=Whisper
     if (!settings_->contains("asr/modelPath")) settings_->setValue("asr/modelPath", "");
+    if (!settings_->contains("asr/enabled")) settings_->setValue("asr/enabled", false);
 
     // VAD 配置
     if (!settings_->contains("vad/enabled")) settings_->setValue("vad/enabled", false);
@@ -215,6 +216,16 @@ int ConfigManager::getAsrEngineType() const
 void ConfigManager::setAsrEngineType(int type)
 {
     settings_->setValue("asr/engineType", type);
+}
+
+bool ConfigManager::getAsrEnabled() const
+{
+    return settings_->value("asr/enabled", false).toBool();
+}
+
+void ConfigManager::setAsrEnabled(bool enabled)
+{
+    settings_->setValue("asr/enabled", enabled);
 }
 
 QString ConfigManager::getVadModelPath() const

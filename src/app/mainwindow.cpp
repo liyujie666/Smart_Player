@@ -317,6 +317,18 @@ void MainWindow::applyPersistentSettings()
 
     // 静音状态
     player_->setMute(isMutedByUser_);
+
+    // 字幕开关：跨视频保持（切换视频后自动恢复 ASR）
+    bool asrEnabled = ConfigManager::instance().getAsrEnabled();
+    if (asrEnabled) {
+        player_->setAsrEnabled(true);
+
+        // 翻译开关：如果字幕和翻译都开启，恢复翻译
+        bool transEnabled = ConfigManager::instance().getTranslationEnabled();
+        if (transEnabled) {
+            player_->setTranslationEnabled(true);
+        }
+    }
 }
 
 void MainWindow::onPlayerOpenResult(bool result)
@@ -1495,8 +1507,18 @@ void MainWindow::on_subtitleBtn_clicked()
         subtitlePopup_->fontSizeSlider_->setValue(savedFontSize);
         ui->videoWidget->setSubtitleFontSize(savedFontSize);
 
+        // 从配置恢复开关状态（阻止信号，避免在视频未就绪时触发）
+        subtitlePopup_->realtimeBtn_->blockSignals(true);
+        subtitlePopup_->translateBtn_->blockSignals(true);
+        subtitlePopup_->realtimeBtn_->setChecked(ConfigManager::instance().getAsrEnabled());
+        subtitlePopup_->translateBtn_->setChecked(ConfigManager::instance().getTranslationEnabled());
+        subtitlePopup_->realtimeBtn_->blockSignals(false);
+        subtitlePopup_->translateBtn_->blockSignals(false);
+
         connect(subtitlePopup_->realtimeBtn_, &QPushButton::toggled, this, [this](bool on){
             qDebug() << "实时字幕:" << on;
+            // 保存到配置（程序级持久化，跨视频保持）
+            ConfigManager::instance().setAsrEnabled(on);
             player_->setAsrEnabled(on);
         });
 

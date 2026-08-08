@@ -60,6 +60,10 @@ public:
   void setTranslationEnabled(bool enabled);
     bool isTranslationEnabled() const { return translation_enabled_; }
 
+    // 动态切换翻译开关（不重建管线，不阻塞调用线程）
+    // 如果翻译引擎尚未缓存，且需要开启翻译，则懒加载引擎
+    void applyTranslationToggle(bool enabled);
+
     // 管线配置（一次性设置完整配置）
     void setPipelineConfig(const PipelineConfig& cfg);
 
