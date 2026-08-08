@@ -167,6 +167,18 @@ void FsmnVad::reset() {
 std::vector<float> FsmnVad::computeFeatures(const std::vector<float>& pcm, int& out_frames) {
     out_frames = 0;
 
+    // 诊断：打印 PCM 输入范围
+    if (!diagnostic_logged_ && !pcm.empty()) {
+        float pcm_min = pcm[0], pcm_max = pcm[0], pcm_abs_max = 0.0f;
+        for (float v : pcm) {
+            if (v < pcm_min) pcm_min = v;
+            if (v > pcm_max) pcm_max = v;
+            if (std::abs(v) > pcm_abs_max) pcm_abs_max = std::abs(v);
+        }
+        qDebug() << "[FsmnVad] PCM input range: min=" << pcm_min 
+                 << "max=" << pcm_max << "abs_max=" << pcm_abs_max;
+    }
+
     FbankExtractor fbank;
     FbankExtractor::Config fcfg;
     fcfg.n_mels = n_mels_;
