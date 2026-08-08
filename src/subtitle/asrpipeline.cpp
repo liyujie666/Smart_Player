@@ -41,59 +41,26 @@ bool AsrPipeline::init(const PipelineConfig& cfg, AVStream* audio, SubtitleQueue
         }
     }
 
-    // 初始化 VAD
-    if (config_.enable_vad) {
-        vad_ = createVadEngine(config_.vad_type);
-        if (vad_ && !vad_->init(config_.vad_config)) {
-            qDebug() << "[AsrPipeline] VAD init failed, falling back to no-VAD mode";
-            vad_.reset();
-            config_.enable_vad = false;
-        }
+    // 初始化 VAD（使用 AsrManager 注入的引擎实例，不重新加载模型）
+    if (config_.enable_vad && vad_ && vad_->isReady()) {
+        vad_->reset();   // 重置状态，复用已加载的模型
+    } else if (config_.enable_vad) {
+        qDebug() << "[AsrPipeline] VAD not ready, falling back to no-VAD mode";
+        config_.enable_vad = false;
     }
 
-    // 初始化 ASR引擎
-    asr_ = createAsrEngine(config_.asr_type);
-    if (!asr_) {
-        emit engineError("Failed to create ASR engine");
+    // 初始化 ASR 引擎（使用 AsrManager 注入的引擎实例，不重新加载模型）
+    if (!asr_ || !asr_->isReady()) {
+        emit engineError("ASR engine not ready");
         return false;
     }
 
-    // Whisper 特有：优先使用缓存的context
-    if (config_.asr_type == AsrEngineType::Whisper) {
-        auto* whisper = dynamic_cast<WhisperEngine*>(asr_.get());
-        whisper_context* cached_ctx = nullptr;
-        if (whisper && AsrModelCache::instance().tryAcquire(cached_ctx)) {
-            qDebug() << "[AsrPipeline] using cached whisper context";
-            if (whisper->initWithContext(cached_ctx, config_.asr_config)) {
-                uses_cached_model_ = true;
-            } else {
-                AsrModelCache::instance().release();
-                if (!asr_->init(config_.asr_config)) {
-                    emit engineError("ASR engine init failed");
-                    return false;
-                }
-            }
-        } else {
-            if (!asr_->init(config_.asr_config)) {
-                emit engineError("ASR engine init failed");
-                return false;
-            }
-        }
-    } else {
-        if (!asr_->init(config_.asr_config)) {
-            emit engineError("ASR engine init failed");
-            return false;
-        }
-    }
-
-    // 初始化翻译引擎（可选）
-    if (config_.enable_translation) {
-        translator_ = createTranslator(config_.translator_type);
-        if (translator_ && !translator_->init(config_.translate_config)) {
-            qDebug() << "[AsrPipeline] Translator init failed, translation disabled";
-            translator_.reset();
-            config_.enable_translation = false;
-        }
+    // 初始化翻译引擎（使用 AsrManager 注入的实例，可选）
+    if (config_.enable_translation && translator_ && translator_->isReady()) {
+        // 翻译引擎已就绪
+    } else if (config_.enable_translation) {
+        qDebug() << "[AsrPipeline] Translator not ready, translation disabled";
+        config_.enable_translation = false;
     }
 
     return true;
@@ -179,38 +146,15 @@ void AsrPipeline::feedPcm(const std::vector<float>& pcm, double base_sec) {
 }
 
 void AsrPipeline::setAsrEngine(AsrEngineType type, const AsrEngineConfig& cfg) {
-    // 先释放旧引擎
-    if (asr_) asr_->release();
-    if (uses_cached_model_) {
-        AsrModelCache::instance().release();
-        uses_cached_model_ = false;
-    }
-
+    // 引擎由 AsrManager 持有和注入，Pipeline 只更新配置
     config_.asr_type = type;
     config_.asr_config = cfg;
-
-    asr_ = createAsrEngine(type);
-    if (asr_) {
-        if (!asr_->init(cfg)) {
-            emit engineError(QString("Failed to init %1 engine")
-                                .arg(QString::fromStdString(asr_->name())));
-        }
-    }
 }
 
 void AsrPipeline::setTranslator(TranslatorType type, const TranslateConfig& cfg) {
-    if (translator_) translator_->release();
-
+    // 翻译引擎由 AsrManager 持有和注入，Pipeline 只更新配置
     config_.translator_type = type;
     config_.translate_config = cfg;
-
-    translator_ = createTranslator(type);
-    if (translator_) {
-        if (!translator_->init(cfg)) {
-            emit engineError(QString("Failed to init %1 translator")
-                                 .arg(QString::fromStdString(translator_->name())));
-        }
-    }
 }
 
 void AsrPipeline::enableTranslation(bool enable) {

@@ -31,6 +31,7 @@ PlayerCore::PlayerCore(QObject *parent)
 PlayerCore::~PlayerCore()
 {
     stop();
+    asr_manager_->releaseEngines();   // 释放缓存的 ASR/VAD/翻译引擎
 
     delete audio_pkt_queue_; audio_pkt_queue_ = nullptr;
     delete video_pkt_queue_; video_pkt_queue_ = nullptr;

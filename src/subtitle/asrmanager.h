@@ -26,6 +26,7 @@ public:
     bool isInitializing() const { return init_thread_.joinable(); }
     void start();
     void stop();
+    void releaseEngines();   // 释放缓存的引擎（程序退出时调用）
     void reset();
     void sendAudioFrame(AVFrame* frame);
     SubtitleQueue* queue() { return &queue_; }
@@ -77,6 +78,15 @@ private:
 
     // 新架构：Pipeline + Source
     std::unique_ptr<AsrPipeline> pipeline_;
+
+    // 引擎缓存（跨文件复用，不随 Pipeline 重建）
+    std::unique_ptr<IVadEngine> cached_vad_;
+    std::unique_ptr<IAsrEngine> cached_asr_;
+    std::unique_ptr<ITranslator> cached_translator_;
+    AsrEngineType cached_asr_type_ = AsrEngineType::Whisper;
+    QString cached_vad_model_path_;
+    QString cached_asr_model_path_;
+    TranslatorType cached_translator_type_ = TranslatorType::GPT;
 
     // 异步初始化线程（防止 ONNX 模型加载阻塞调用线程）
     std::thread init_thread_;

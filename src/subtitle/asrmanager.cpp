@@ -31,7 +31,6 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
     // 1. 创建音频源
     std::unique_ptr<IAudioSource> source;
     if (type == Demuxer::MediaType::RTSP_TYPE || type == Demuxer::MediaType::RTMP_TYPE) {
-        // 实时模式：LiveAudioSource
         auto live = std::make_unique<LiveAudioSource>(audio);
         if (!live->open()) {
             qWarning() << "[AsrManager] LiveAudioSource open failed";
@@ -40,7 +39,6 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
         source = std::move(live);
         queue_.setMode(SubtitleQueue::Mode::Live);
     } else {
-        // 离线模式：FileAudioSource
         auto file = std::make_unique<FileAudioSource>(url);
         if (!file->open()) {
             qWarning() << "[AsrManager] FileAudioSource open failed";
@@ -50,16 +48,84 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
         queue_.setMode(SubtitleQueue::Mode::Offline);
     }
 
-    // 2. 创建并初始化 Pipeline
+    // 2. 确保引擎已加载（跨文件复用，仅在配置变化时重建）
+    auto cfg = buildPipelineConfig();
+
+    // VAD 引擎
+    if (cfg.enable_vad) {
+        bool need_rebuild = !cached_vad_ ||
+            cached_vad_model_path_.toStdString() != cfg.vad_config.model_path;
+        if (need_rebuild) {
+            qDebug() << "[AsrManager] (re)loading VAD engine";
+            cached_vad_ = createVadEngine(cfg.vad_type);
+            if (cached_vad_ && !cached_vad_->init(cfg.vad_config)) {
+                qDebug() << "[AsrManager] VAD init failed, disabling VAD";
+                cached_vad_.reset();
+                cfg.enable_vad = false;
+            } else {
+                cached_vad_model_path_ = QString::fromStdString(cfg.vad_config.model_path);
+            }
+        } else {
+            qDebug() << "[AsrManager] reusing cached VAD engine";
+            cached_vad_->reset();
+        }
+    }
+
+    // ASR 引擎
+    bool need_rebuild_asr = !cached_asr_ ||
+        cached_asr_type_ != cfg.asr_type ||
+        cached_asr_model_path_.toStdString() != cfg.asr_config.model_path;
+    if (need_rebuild_asr) {
+        qDebug() << "[AsrManager] (re)loading ASR engine:" << (int)cfg.asr_type;
+        cached_asr_ = createAsrEngine(cfg.asr_type);
+        if (!cached_asr_) {
+            emit engineError("Failed to create ASR engine");
+            return false;
+        }
+        if (!cached_asr_->init(cfg.asr_config)) {
+            emit engineError("ASR engine init failed");
+            cached_asr_.reset();
+            return false;
+        }
+        cached_asr_type_ = cfg.asr_type;
+        cached_asr_model_path_ = QString::fromStdString(cfg.asr_config.model_path);
+    } else {
+        qDebug() << "[AsrManager] reusing cached ASR engine";
+        cached_asr_->reset();
+    }
+
+    // 翻译引擎
+    if (cfg.enable_translation) {
+        bool need_rebuild_tr = !cached_translator_ ||
+            cached_translator_type_ != cfg.translator_type;
+        if (need_rebuild_tr) {
+            qDebug() << "[AsrManager] (re)loading translator:" << (int)cfg.translator_type;
+            cached_translator_ = createTranslator(cfg.translator_type);
+            if (cached_translator_ && !cached_translator_->init(cfg.translate_config)) {
+                qDebug() << "[AsrManager] translator init failed, disabling translation";
+                cached_translator_.reset();
+                cfg.enable_translation = false;
+            } else {
+                cached_translator_type_ = cfg.translator_type;
+            }
+        } else {
+            qDebug() << "[AsrManager] reusing cached translator";
+        }
+    }
+
+    // 3. 创建 Pipeline 并注入引擎（不重新加载模型）
     pipeline_ = std::make_unique<AsrPipeline>(this);
     pipeline_->setSource(std::move(source));
 
-    // 离线识别节流：把播放位置提供者传给 Pipeline
     if (playback_pos_fn_) {
         pipeline_->setPlaybackPositionProvider(playback_pos_fn_);
     }
 
-    // 连接信号（Pipeline 的 emit 发生在 std::thread 中，必须用 QueuedConnection）
+    // 注入引擎指针（Pipeline 引用，不拥有）
+    pipeline_->setVadEngine(cached_vad_.get());
+    pipeline_->setAsrEngine(cached_asr_.get());
+    pipeline_->setTranslatorEngine(cached_translator_.get());
+
     connect(pipeline_.get(), &AsrPipeline::subtitleReady,
             this, &AsrManager::subtitleReady, Qt::QueuedConnection);
     connect(pipeline_.get(), &AsrPipeline::translationReady,
@@ -67,8 +133,6 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
     connect(pipeline_.get(), &AsrPipeline::engineError,
             this, &AsrManager::engineError, Qt::QueuedConnection);
 
-    // 3. 用配置初始化管线（VAD + ASR + 翻译引擎）
-    auto cfg = buildPipelineConfig();
     if (!pipeline_->init(cfg, audio, &queue_)) {
         qWarning() << "[AsrManager] Pipeline init failed";
         pipeline_.reset();
@@ -143,9 +207,17 @@ void AsrManager::stop() {
     std::lock_guard<std::mutex> lock(init_mtx_);
     if (pipeline_) {
         pipeline_->stop();
-        pipeline_.reset();
+        pipeline_.reset();   // 只释放 Pipeline（音频源/线程），引擎缓存保留
     }
     queue_.clear();
+}
+
+void AsrManager::releaseEngines() {
+    stop();
+    std::lock_guard<std::mutex> lock(init_mtx_);
+    cached_vad_.reset();
+    cached_asr_.reset();
+    cached_translator_.reset();
 }
 
 void AsrManager::reset() {

@@ -69,6 +69,11 @@ public:
     void enableTranslation(bool enable);
     void enableVad(bool enable);
 
+    // 注入外部引擎（AsrManager 持有，Pipeline 引用，不负责析构）
+    void setVadEngine(IVadEngine* v) { vad_ = v; }
+    void setAsrEngine(IAsrEngine* a) { asr_ = a; }
+    void setTranslatorEngine(ITranslator* t) { translator_ = t; }
+
     // 离线识别节流：提供当前播放位置（秒），识别进度超前 lookahead 后暂缓，
     // 避免一开启字幕就全速识别整个文件占满 CPU 导致播放卡顿
     void setPlaybackPositionProvider(std::function<double()> fn) {
@@ -112,10 +117,10 @@ private:
     AudioPcmRingBuffer ring_;
     AVRational tb_{0, 0};
 
-    // 三大引擎
-    std::unique_ptr<IVadEngine> vad_;
-    std::unique_ptr<IAsrEngine> asr_;
-    std::unique_ptr<ITranslator> translator_;
+    // 三大引擎（AsrManager 拥有，Pipeline 通过指针引用，不负责析构）
+    IVadEngine* vad_ = nullptr;
+    IAsrEngine* asr_ = nullptr;
+    ITranslator* translator_ = nullptr;
 
     // VAD + ASR 线程
     std::thread vad_asr_thread_;
