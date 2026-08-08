@@ -75,6 +75,9 @@ private:
     double current_speech_end_ = 0.0;
     int silence_frame_count_ = 0;
 
+    // 概率滑动平均
+    std::vector<float> prob_history_;
+
     // FBank / LFR 参数
     int n_mels_ = 80;
     int lfr_m_ = 5;               // LFR 拼接帧数

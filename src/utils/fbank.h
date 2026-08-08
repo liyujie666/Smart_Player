@@ -5,6 +5,7 @@
 #include <cmath>
 #include <complex>
 #include <cstring>
+#include <cstdlib>
 
 // FBank（Mel Filterbank）特征提取器
 // 用于将 PCM 音频转换为 80 维 Mel 频谱特征
@@ -16,10 +17,10 @@ public:
         int frame_length = 400;     // 25ms @ 16kHz
         int frame_shift = 160;      // 10ms @ 16kHz
         int n_mels = 80;
-        float preemphasis = 0.97f;
-        float dither = 0.0f;        // 0 = 关闭
-        bool use_power = true;      // 用功率谱而非幅度谱
-        float energy_floor = 1.0f;
+    float preemphasis = 0.97f;
+    float dither = 1.0f;         // 添加抖动，避免静音段特征全零
+    bool use_power = true;      // 用功率谱而非幅度谱
+    float energy_floor = 1.0f;
     };
 
     FbankExtractor() = default;
@@ -55,15 +56,19 @@ public:
         for (int f = 0; f < num_frames; ++f) {
             int start = f * cfg_.frame_shift;
 
-            // 1. 取帧
+            // 1. 取帧 + dither（添加微弱随机噪声，避免静音段特征全零）
             for (int i = 0; i < cfg_.frame_length; ++i) {
                 frame[i] = pcm[start + i];
+                if (cfg_.dither > 0) {
+                    // 简单均匀分布 dither，范围 [-dither, +dither]
+                    float r = ((float)rand() / RAND_MAX - 0.5f) * 2.0f * cfg_.dither;
+                    frame[i] += r;
+                }
             }
 
-            // 2. 预加重
+            // 2. 预加重（第一帧不做预加重，保持原值）
             if (cfg_.preemphasis > 0) {
                 float prev = frame[0];
-                frame[0] *= (1.0f - cfg_.preemphasis);
                 for (int i = 1; i < cfg_.frame_length; ++i) {
                     float cur = frame[i];
                     frame[i] = cur - cfg_.preemphasis * prev;
@@ -135,10 +140,10 @@ private:
 
             for (int k = bin_left; k <= bin_right && k < n_fft_bins; ++k) {
                 float weight = 0.0f;
-                if (k < bin_center) {
-                    weight = (float)(k - bin_left) / (bin_center - bin_left + 1);
-                } else if (k <= bin_right) {
-                    weight = (float)(bin_right - k) / (bin_right - bin_center + 1);
+                if (k < bin_center && bin_center > bin_left) {
+                    weight = (float)(k - bin_left) / (bin_center - bin_left);
+                } else if (k <= bin_right && bin_right > bin_center) {
+                    weight = (float)(bin_right - k) / (bin_right - bin_center);
                 }
                 if (weight > 0) {
                     mel_filters_[m].push_back({k, weight});

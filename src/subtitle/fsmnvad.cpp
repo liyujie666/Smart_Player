@@ -158,6 +158,7 @@ void FsmnVad::reset() {
     residual_pcm_.clear();
     completed_segments_.clear();
     base_initialized_ = false;
+    prob_history_.clear();
     for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 }
 
@@ -315,9 +316,21 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
                 return {};
             }
             for (float p : probs) {
+                // 概率滑动平均平滑（减少逐帧波动导致的振荡）
+                float smoothed = p;
+                if (cfg_.smoothing_window > 1) {
+                    prob_history_.push_back(p);
+                    if ((int)prob_history_.size() > cfg_.smoothing_window) {
+                        prob_history_.erase(prob_history_.begin());
+                    }
+                    float sum = 0;
+                    for (float h : prob_history_) sum += h;
+                    smoothed = sum / prob_history_.size();
+                }
+
                 double frame_time = stream_base_sec_ +
                     (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
-                updateState(p, frame_time);
+                updateState(smoothed, frame_time);
                 total_frames_processed_++;
             }
             infer_count++;
@@ -362,8 +375,18 @@ std::vector<VadSegment> FsmnVad::flush() {
 }
 
 void FsmnVad::updateState(float speech_prob, double frame_time) {
-    bool is_speech = speech_prob >= cfg_.threshold;
+    // 迟滞阈值：进入语音用高阈值，退出语音用低阈值
+    bool is_speech;
+    if (state_ == State::Silence) {
+        // 静音状态：需要超过高阈值才算语音
+        is_speech = speech_prob >= cfg_.threshold;
+    } else {
+        // 语音/拖尾状态：低于低阈值才算静音
+        is_speech = speech_prob >= cfg_.threshold_exit;
+    }
+
     int silence_frames_threshold = cfg_.min_silence_ms / frame_shift_ms_;
+    if (silence_frames_threshold <= 0) silence_frames_threshold = 30;
 
     switch (state_) {
     case State::Silence:
@@ -371,7 +394,6 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
             state_ = State::Speech;
             current_speech_start_ = frame_time;
             silence_frame_count_ = 0;
-            qDebug() << "[FsmnVad] speech start @" << frame_time << "s prob=" << speech_prob;
         }
         break;
 
@@ -379,6 +401,9 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
         if (!is_speech) {
             state_ = State::Trailing;
             silence_frame_count_ = 1;
+            current_speech_end_ = frame_time;
+        } else {
+            // 持续语音，更新结束时间
             current_speech_end_ = frame_time;
         }
         break;
@@ -389,7 +414,6 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
             silence_frame_count_ = 0;
         } else {
             silence_frame_count_++;
-            if (silence_frames_threshold <= 0) silence_frames_threshold = 30; // 默认 300ms
             if (silence_frame_count_ >= silence_frames_threshold) {
                 double duration_ms = (current_speech_end_ - current_speech_start_) * 1000.0;
                 if (duration_ms >= cfg_.min_speech_ms) {
@@ -397,6 +421,8 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
                     seg.start_sec = current_speech_start_;
                     seg.end_sec = current_speech_end_;
                     completed_segments_.push_back(seg);
+                    qDebug() << "[FsmnVad] segment @" << seg.start_sec << "-"
+                             << seg.end_sec << "s dur=" << duration_ms << "ms";
                 }
                 state_ = State::Silence;
             }
