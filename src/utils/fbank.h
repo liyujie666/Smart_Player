@@ -36,7 +36,8 @@ public:
 
     void init(const Config& cfg) {
         cfg_ = cfg;
-        n_fft_ = std::max(cfg_.fft_size, cfg_.frame_length);
+        //n_fft_ = std::max(cfg_.fft_size, cfg_.frame_length);
+        n_fft_ = 512;
         // 计算 Mel 滤波器组
         computeMelFilterbank();
         // 预计算汉明窗
