@@ -1507,13 +1507,18 @@ void MainWindow::on_subtitleBtn_clicked()
         subtitlePopup_->fontSizeSlider_->setValue(savedFontSize);
         ui->videoWidget->setSubtitleFontSize(savedFontSize);
 
-        // 从配置恢复开关状态（阻止信号，避免在视频未就绪时触发）
-        subtitlePopup_->realtimeBtn_->blockSignals(true);
-        subtitlePopup_->translateBtn_->blockSignals(true);
-        subtitlePopup_->realtimeBtn_->setChecked(ConfigManager::instance().getAsrEnabled());
-        subtitlePopup_->translateBtn_->setChecked(ConfigManager::instance().getTranslationEnabled());
-        subtitlePopup_->realtimeBtn_->blockSignals(false);
-        subtitlePopup_->translateBtn_->blockSignals(false);
+        // 先从配置恢复开关状态，再连接信号（setChecked 在 connect 之前调用，
+        // toggled 信号还未连接，不会误触发 setAsrEnabled/setTranslationEnabled）
+        bool asrOn = ConfigManager::instance().getAsrEnabled();
+        bool transOn = ConfigManager::instance().getTranslationEnabled();
+        subtitlePopup_->realtimeBtn_->setChecked(asrOn);
+        subtitlePopup_->translateBtn_->setChecked(transOn);
+        // setChecked 时 toggled 信号虽未连接到外部，但 SubtitlePopup 内部的
+        // 图标更新 lambda 也在 toggled 上，需手动同步图标
+        subtitlePopup_->realtimeBtn_->setIcon(QIcon(asrOn ?
+            ":/SmartPlayer-icon/checked.png" : ":/SmartPlayer-icon/uncheck.png"));
+        subtitlePopup_->translateBtn_->setIcon(QIcon(transOn ?
+            ":/SmartPlayer-icon/checked.png" : ":/SmartPlayer-icon/uncheck.png"));
 
         connect(subtitlePopup_->realtimeBtn_, &QPushButton::toggled, this, [this](bool on){
             qDebug() << "实时字幕:" << on;
