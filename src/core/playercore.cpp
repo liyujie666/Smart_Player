@@ -136,10 +136,7 @@ bool PlayerCore::openInternal(const QString &url)
     if (asrEnabled_ && hasAudio_ && !asr_manager_->isModelPathEmpty()) {
         applyAsrConfig();
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
-        bool ok = asr_manager_->init(url, demuxer_->mediaType(), as);
-        if(ok){
-            asr_manager_->start();
-        }
+        asr_manager_->initAsync(url, demuxer_->mediaType(), as);
     }
 
     emit initFinished();
@@ -499,9 +496,7 @@ void PlayerCore::setAsrEnabled(bool enabled)
         }
 
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
-        if(asr_manager_->init(file_url_, demuxer_->mediaType(), as)){
-            asr_manager_->start();
-        }
+        asr_manager_->initAsync(file_url_, demuxer_->mediaType(), as);
     } else {
         asr_manager_->stop();
         emit subtitleReady("");
@@ -557,9 +552,7 @@ void PlayerCore::setTranslationEnabled(bool enabled)
         applyAsrConfig(true, enabled);
 
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
-        if (asr_manager_->init(file_url_, demuxer_->mediaType(), as)) {
-            asr_manager_->start();
-        }
+        asr_manager_->initAsync(file_url_, demuxer_->mediaType(), as);
     }
 }
 

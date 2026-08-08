@@ -4,6 +4,8 @@
 #include <QObject>
 #include <memory>
 #include <functional>
+#include <atomic>
+#include <mutex>
 #include "queue/subtitlequeue.h"
 #include "iasrengine.h"
 #include "itranslator.h"
@@ -19,6 +21,9 @@ public:
     ~AsrManager() override;
 
     bool init(const QString& url, Demuxer::MediaType type, AVStream* audio);
+    // 异步初始化+启动：模型加载在工作线程完成，不阻塞调用线程
+    void initAsync(const QString& url, Demuxer::MediaType type, AVStream* audio);
+    bool isInitializing() const { return init_thread_.joinable(); }
     void start();
     void stop();
     void reset();
@@ -72,6 +77,11 @@ private:
 
     // 新架构：Pipeline + Source
     std::unique_ptr<AsrPipeline> pipeline_;
+
+    // 异步初始化线程（防止 ONNX 模型加载阻塞调用线程）
+    std::thread init_thread_;
+    std::mutex init_mtx_;               // 保护 pipeline_ 的创建/销毁
+    std::atomic<bool> init_cancelling_{false};
 
     // 引擎配置
     AsrEngineType asr_engine_type_ = AsrEngineType::Whisper;

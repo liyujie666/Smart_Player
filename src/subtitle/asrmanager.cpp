@@ -33,21 +33,21 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
     if (type == Demuxer::MediaType::RTSP_TYPE || type == Demuxer::MediaType::RTMP_TYPE) {
         // 实时模式：LiveAudioSource
         auto live = std::make_unique<LiveAudioSource>(audio);
-      if (!live->open()) {
+        if (!live->open()) {
             qWarning() << "[AsrManager] LiveAudioSource open failed";
-  return false;
-  }
+            return false;
+        }
         source = std::move(live);
         queue_.setMode(SubtitleQueue::Mode::Live);
     } else {
         // 离线模式：FileAudioSource
         auto file = std::make_unique<FileAudioSource>(url);
-   if (!file->open()) {
+        if (!file->open()) {
             qWarning() << "[AsrManager] FileAudioSource open failed";
             return false;
         }
- source = std::move(file);
-      queue_.setMode(SubtitleQueue::Mode::Offline);
+        source = std::move(file);
+        queue_.setMode(SubtitleQueue::Mode::Offline);
     }
 
     // 2. 创建并初始化 Pipeline
@@ -69,13 +69,63 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
 
     // 3. 用配置初始化管线（VAD + ASR + 翻译引擎）
     auto cfg = buildPipelineConfig();
-  if (!pipeline_->init(cfg, audio, &queue_)) {
+    if (!pipeline_->init(cfg, audio, &queue_)) {
         qWarning() << "[AsrManager] Pipeline init failed";
         pipeline_.reset();
-    return false;
+        return false;
     }
 
     return true;
+}
+
+void AsrManager::initAsync(const QString& url, Demuxer::MediaType type, AVStream* audio) {
+    // 等待之前的异步初始化完成
+    if (init_thread_.joinable()) {
+        init_cancelling_ = true;
+        init_thread_.join();
+        init_cancelling_ = false;
+    }
+
+    // 复制参数（audio 流指针在调用期间有效，确保播放器不先析构）
+    QString url_copy = url;
+    Demuxer::MediaType type_copy = type;
+    AVStream* audio_copy = audio;
+
+    init_thread_ = std::thread([this, url_copy, type_copy, audio_copy]() {
+        qDebug() << "[AsrManager] async init started";
+
+        // 先停止旧 pipeline（在工作线程做，避免主线程阻塞）
+        {
+            std::lock_guard<std::mutex> lock(init_mtx_);
+            if (pipeline_) {
+                pipeline_->stop();
+                pipeline_.reset();
+            }
+            queue_.clear();
+        }
+
+        if (init_cancelling_) return;
+
+        // 同步执行 init
+        bool ok = false;
+        {
+            std::lock_guard<std::mutex> lock(init_mtx_);
+            ok = init(url_copy, type_copy, audio_copy);
+        }
+
+        if (init_cancelling_) return;
+
+        if (ok) {
+            qDebug() << "[AsrManager] async init success, starting pipeline";
+            std::lock_guard<std::mutex> lock(init_mtx_);
+            if (pipeline_ && !init_cancelling_) {
+                pipeline_->start();
+            }
+        } else {
+            qWarning() << "[AsrManager] async init failed";
+            emit engineError("ASR init failed");
+        }
+    });
 }
 
 void AsrManager::start() {
@@ -83,6 +133,14 @@ void AsrManager::start() {
 }
 
 void AsrManager::stop() {
+    // 取消异步初始化（如果在进行中）
+    init_cancelling_ = true;
+    if (init_thread_.joinable()) {
+        init_thread_.join();
+    }
+    init_cancelling_ = false;
+
+    std::lock_guard<std::mutex> lock(init_mtx_);
     if (pipeline_) {
         pipeline_->stop();
         pipeline_.reset();
