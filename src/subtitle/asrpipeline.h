@@ -151,6 +151,9 @@ private:
 
     // Whisper缓存模型管理标记
     bool uses_cached_model_ = false;
+
+    // seek 后标记，让 offlineLoop 下一次迭代跳过节流直接处理
+    std::atomic<bool> seek_flag_{false};
 };
 
 #endif // ASRPIPELINE_H

@@ -28,6 +28,9 @@ qWarning() << "[FileAudioSource] No audio stream found";
     }
     audio_stream_idx_ = demux_->getStreamIndex(AVMEDIA_TYPE_AUDIO);
 
+    // 保存音频流时间基，用于 fillBuffer 中 pts→秒换算
+    audio_tb_ = as->time_base;
+
     // 2. 初始化 Decoder
     dec_ = std::make_unique<Decoder>();
     if (dec_->init(as->codecpar, AVMEDIA_TYPE_AUDIO) < 0) {
@@ -153,7 +156,17 @@ bool FileAudioSource::fillBuffer() {
         if (res_->resample(frame, &buf, &samples) >= 0 && samples > 0) {
             pcm_buf_.insert(pcm_buf_.end(), (float*)buf, (float*)buf + samples);
             pcm_read_pos_ = 0;
-   got_data = true;
+
+            // 用 frame->pts 校准时间戳（seek 后第一帧的 pts 可能与 pos_sec 不同）
+            if (audio_tb_.den > 0 && frame->pts != AV_NOPTS_VALUE) {
+                double pts_sec = frame->pts * av_q2d(audio_tb_);
+                // seek 后首次校准：直接用 pts 覆盖
+                // 后续帧：pts 单调递增，也直接用（比累加更准确）
+                current_time_sec_ = pts_sec;
+                time_calibrated_ = true;
+            }
+
+            got_data = true;
         }
         av_free(buf);
       av_packet_unref(pkt);
@@ -190,6 +203,7 @@ bool FileAudioSource::seekTo(double pos_sec) {
     pcm_buf_.clear();
     pcm_read_pos_ = 0;
     current_time_sec_ = pos_sec;
+    time_calibrated_ = false;  // 等待 fillBuffer 用 pts 重新校准
     eof_ = false;
 
     qDebug() << "[FileAudioSource] seeked to" << pos_sec << "s";

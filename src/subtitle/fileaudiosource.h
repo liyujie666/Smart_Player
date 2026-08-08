@@ -50,7 +50,9 @@ private:
     std::unique_ptr<Resampler> res_;
 
     int audio_stream_idx_ = -1;
+    AVRational audio_tb_{0, 0};  // 音频流时间基，用于 pts→秒换算
     double current_time_sec_ = 0.0;
+    bool time_calibrated_ = false;  // seek 后是否已用 pts 校准时间
 
     // 内部 PCM 缓冲（解码+重采样后暂存，供 pull 使用）
     std::vector<float> pcm_buf_;

@@ -215,6 +215,9 @@ void AsrPipeline::seekTo(double pos_sec) {
         queue_->clear();
     }
 
+    // 4. 设置 seek 标志，让 offlineLoop 跳过节流快速追赶
+    seek_flag_ = true;
+
     qDebug() << "[AsrPipeline] seekTo" << pos_sec << "s";
 }
 
@@ -440,9 +443,12 @@ void AsrPipeline::offlineLoop() {
         int n = source_->pull(pcm.data(), CHUNK_SAMPLES, media_time);
         if (n <= 0) break;
 
+        // seek 后跳过超前等待和节流，立即处理首个 chunk
+        bool skip_throttle = seek_flag_.exchange(false);
+
         // --- 超前等待（阶段 3）---
         // 识别进度大幅超前时，精确等待到播放追上，避免无谓 CPU 消耗
-        if (playback_pos_fn_) {
+        if (playback_pos_fn_ && !skip_throttle) {
             while (running_ && !source_->isCancelled()) {
                 double pos = playback_pos_fn_();
                 double ahead = media_time - pos;
@@ -476,34 +482,39 @@ void AsrPipeline::offlineLoop() {
         ema_rtf = ema_alpha * current_rtf + (1.0 - ema_alpha) * ema_rtf;
 
         // --- 自适应 yield（阶段 1/2）---
-        // 判断当前所处阶段
-        double ahead_sec = 0.0;
-        if (playback_pos_fn_) {
-            ahead_sec = media_time - playback_pos_fn_();
-        }
-
+        // seek 后首个 chunk 跳过节流，让 ASR 尽快产出字幕
         int yield_ms = 0;
 
-        if (ahead_sec <= 0) {
-            // 追赶阶段：识别落后于播放
-            // yield 最小化：仅保证 OS 调度（1-2ms），靠线程优先级保护渲染
-            yield_ms = 2;
-        } else if (ahead_sec < lookahead_sec_) {
-            // 跟随阶段：已追上但未超前太多
-            // 匀速推进：yield = chunk 音频时长 - 处理耗时
-            // 目标：让识别速率 ≈ 播放速率，保持 lookahead 稳定
-            double target_pace_ms = actual_chunk_sec * 1000.0;
-            double spare_ms = target_pace_ms - elapsed_ms;
-
-            if (spare_ms > 0) {
-                // RTF < 1 有余量：yield 部分余量（保留 30% 作为识别 buffer）
-                yield_ms = (int)(spare_ms * 0.7);
-            } else {
-                // RTF ≥ 1 无余量：最小yield
-                yield_ms = 2;
+        if (skip_throttle) {
+            yield_ms = 0;
+        } else {
+            // 判断当前所处阶段
+            double ahead_sec = 0.0;
+            if (playback_pos_fn_) {
+                ahead_sec = media_time - playback_pos_fn_();
             }
+
+            if (ahead_sec <= 0) {
+                // 追赶阶段：识别落后于播放
+                // yield 最小化：仅保证 OS 调度（1-2ms），靠线程优先级保护渲染
+                yield_ms = 2;
+            } else if (ahead_sec < lookahead_sec_) {
+                // 跟随阶段：已追上但未超前太多
+                // 匀速推进：yield = chunk 音频时长 - 处理耗时
+                // 目标：让识别速率 ≈ 播放速率，保持 lookahead 稳定
+                double target_pace_ms = actual_chunk_sec * 1000.0;
+                double spare_ms = target_pace_ms - elapsed_ms;
+
+                if (spare_ms > 0) {
+                    // RTF < 1 有余量：yield 部分余量（保留 30% 作为识别 buffer）
+                    yield_ms = (int)(spare_ms * 0.7);
+                } else {
+                    // RTF ≥ 1 无余量：最小yield
+                    yield_ms = 2;
+                }
+            }
+            // ahead_sec >= lookahead_sec_ 的情况在循环头部的超前等待中已处理
         }
-        // ahead_sec >= lookahead_sec_ 的情况在循环头部的超前等待中已处理
 
         if (yield_ms > 0) {
             std::this_thread::sleep_for(std::chrono::milliseconds(yield_ms));
