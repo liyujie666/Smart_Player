@@ -159,25 +159,12 @@ void FsmnVad::reset() {
     residual_pcm_.clear();
     completed_segments_.clear();
     base_initialized_ = false;
-    diagnostic_logged_ = false;
     prob_history_.clear();
     for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 }
 
 std::vector<float> FsmnVad::computeFeatures(const std::vector<float>& pcm, int& out_frames) {
     out_frames = 0;
-
-    // 诊断：打印 PCM 输入范围
-    if (!diagnostic_logged_ && !pcm.empty()) {
-        float pcm_min = pcm[0], pcm_max = pcm[0], pcm_abs_max = 0.0f;
-        for (float v : pcm) {
-            if (v < pcm_min) pcm_min = v;
-            if (v > pcm_max) pcm_max = v;
-            if (std::abs(v) > pcm_abs_max) pcm_abs_max = std::abs(v);
-        }
-        qDebug() << "[FsmnVad] PCM input range: min=" << pcm_min 
-                 << "max=" << pcm_max << "abs_max=" << pcm_abs_max;
-    }
 
     FbankExtractor fbank;
     FbankExtractor::Config fcfg;
@@ -208,35 +195,11 @@ std::vector<float> FsmnVad::computeFeatures(const std::vector<float>& pcm, int& 
 
     // CMVN: (x + mean) * var
     if ((int)cmvn_mean_.size() == feat_dim && (int)cmvn_var_.size() == feat_dim) {
-        // 诊断：归一化前的特征范围
-        if (!diagnostic_logged_ && !flat.empty()) {
-            float before_min = flat[0], before_max = flat[0];
-            for (float v : flat) {
-                if (v < before_min) before_min = v;
-                if (v > before_max) before_max = v;
-            }
-            qDebug() << "[FsmnVad] Feature before CMVN: min=" << before_min << "max=" << before_max;
-            qDebug() << "[FsmnVad] CMVN params: mean[0:5]=" << cmvn_mean_[0] << cmvn_mean_[1] 
-                     << cmvn_mean_[2] << cmvn_mean_[3] << cmvn_mean_[4];
-            qDebug() << "[FsmnVad] CMVN params: var[0:5]=" << cmvn_var_[0] << cmvn_var_[1] 
-                     << cmvn_var_[2] << cmvn_var_[3] << cmvn_var_[4];
-        }
-
         for (int i = 0; i < T_lfr; ++i) {
             float* row = flat.data() + (size_t)i * feat_dim;
             for (int d = 0; d < feat_dim; ++d) {
                 row[d] = (row[d] + cmvn_mean_[d]) * cmvn_var_[d];
             }
-        }
-
-        // 诊断：归一化后的特征范围
-        if (!diagnostic_logged_ && !flat.empty()) {
-            float after_min = flat[0], after_max = flat[0];
-            for (float v : flat) {
-                if (v < after_min) after_min = v;
-                if (v > after_max) after_max = v;
-            }
-            qDebug() << "[FsmnVad] Feature after CMVN: min=" << after_min << "max=" << after_max;
         }
     } else {
         qWarning() << "[FsmnVad] CMVN skip: mean_dim=" << cmvn_mean_.size() 
@@ -310,18 +273,6 @@ std::vector<float> FsmnVad::inferFeatures(const std::vector<float>& flat_feats, 
     const int C = (int)shape[2];
     const float* probs_data = outputs[0].GetTensorData<float>();
 
-    // 诊断：打印第一帧的原始输出（前 10 个类别）
-    if (!diagnostic_logged_ && T > 0) {
-        qDebug() << "[FsmnVad] Model output: T=" << T << "C=" << C;
-        qDebug() << "[FsmnVad] First frame posterior[0:10]:" 
-                 << probs_data[0] << probs_data[1] << probs_data[2] << probs_data[3] << probs_data[4]
-                 << probs_data[5] << probs_data[6] << probs_data[7] << probs_data[8] << probs_data[9];
-        // 检查是否已经是概率（和应该接近 1）
-        float sum = 0.0f;
-        for (int c = 0; c < C; ++c) sum += probs_data[c];
-        qDebug() << "[FsmnVad] First frame prob sum=" << sum << "(should be ~1.0 if softmax already applied)";
-    }
-
     std::vector<float> probs(T);
     for (int t = 0; t < T; ++t) {
         const float* row = probs_data + (size_t)t * C;
@@ -330,12 +281,6 @@ std::vector<float> FsmnVad::inferFeatures(const std::vector<float>& flat_feats, 
         // 但根据 FunASR 的语义，class_0 概率高 = 静音，所以需要取反
         const float silence_posterior = row[0];
         probs[t] = std::clamp(1.0f - silence_posterior, 0.0f, 1.0f);
-        
-        // 诊断：打印第一帧的概率
-        if (!diagnostic_logged_ && t == 0) {
-            qDebug() << "[FsmnVad] Frame 0: silence_posterior=" << silence_posterior 
-                     << "speech_prob(1-sil)=" << probs[t];
-        }
     }
     return probs;
 }
@@ -452,10 +397,8 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
     // 迟滞阈值：进入语音用高阈值，退出语音用低阈值
     bool is_speech;
     if (state_ == State::Silence) {
-        // 静音状态：需要超过高阈值才算语音
         is_speech = speech_prob >= cfg_.threshold;
     } else {
-        // 语音/拖尾状态：低于低阈值才算静音
         is_speech = speech_prob >= cfg_.threshold_exit;
     }
 

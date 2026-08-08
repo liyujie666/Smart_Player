@@ -91,7 +91,6 @@ private:
     std::vector<float> residual_pcm_;
     double stream_base_sec_ = 0.0;
     bool base_initialized_ = false;
-    bool diagnostic_logged_ = false;
     int64_t total_frames_processed_ = 0;
 };
 
