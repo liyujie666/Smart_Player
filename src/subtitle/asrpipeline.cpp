@@ -239,7 +239,7 @@ std::string AsrPipeline::currentTranslatorName() const {
 
 void AsrPipeline::vadAsrLoop() {
     const int SR = 16000;
- const size_t win = 3* SR;    // 3s 窗口
+    const size_t win = 3* SR;    // 3s 窗口
     const size_t step = 1 * SR;   // 1s 步进
     std::vector<float> buf(win);
 
@@ -248,19 +248,19 @@ void AsrPipeline::vadAsrLoop() {
 
     while (running_) {
         size_t avail = use_source ? source_->available() : ring_.available();
-  if (avail < win) {
+        if (avail < win) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
-      continue;
+            continue;
         }
 
         double start_time;
-     if (use_source) {
- start_time = source_->headTimeSec();
+        if (use_source) {
+            start_time = source_->headTimeSec();
             source_->peek(buf.data(), win);
         } else {
-     start_time = ring_.head_time_sec();
-     ring_.peek(buf.data(), win);
-   }
+            start_time = ring_.head_time_sec();
+            ring_.peek(buf.data(), win);
+        }
 
         if (config_.enable_vad && vad_ && vad_->isReady()) {
             processVadAudio(buf, start_time);
@@ -269,8 +269,8 @@ void AsrPipeline::vadAsrLoop() {
             processDirectAsr(buf, start_time);
         }
 
-   if (use_source) {
-        source_->consume(step);
+       if (use_source) {
+            source_->consume(step);
         } else {
             ring_.consume(step);
         }
@@ -414,12 +414,14 @@ void AsrPipeline::offlineLoop() {
 
     const int SR = 16000;
     // Whisper 设计处理 30s chunk；SenseVoice 等 ONNX 引擎建议 ≤10s
-    const int CHUNK_SEC = (config_.asr_type == AsrEngineType::Whisper) ? 30 : 10;
-    const int CHUNK_SAMPLES = CHUNK_SEC * SR;
-    std::vector<float> pcm(CHUNK_SAMPLES);
+    const int NORMAL_CHUNK_SEC = (config_.asr_type == AsrEngineType::Whisper) ? 30 : 10;
+    const int SEEK_CHUNK_SEC = 3;  // seek 后使用 3 秒 chunk 快速响应
+    const int MAX_CHUNK_SAMPLES = NORMAL_CHUNK_SEC * SR;
+    std::vector<float> pcm(MAX_CHUNK_SAMPLES);
 
     qDebug() << "[AsrPipeline] offlineLoop started:"
-             << "chunk_sec=" << CHUNK_SEC
+             << "normal_chunk_sec=" << NORMAL_CHUNK_SEC
+             << "seek_chunk_sec=" << SEEK_CHUNK_SEC
              << "vad=" << (config_.enable_vad && vad_ && vad_->isReady() ? "on" : "off")
              << "asr=" << currentAsrEngineName().c_str();
 
@@ -437,7 +439,7 @@ void AsrPipeline::offlineLoop() {
     // yield 时间 = max(chunk_duration * duty_cycle_factor, min_yield)
     // duty_cycle_factor根据阶段和RTF 动态调整
 
-    const double chunk_duration_ms = CHUNK_SEC * 1000.0;
+    const double normal_chunk_duration_ms = NORMAL_CHUNK_SEC * 1000.0;
     const double lookahead_ms = lookahead_sec_ * 1000.0;
 
     // 平滑 RTF 估计（指数移动平均）
@@ -445,8 +447,13 @@ void AsrPipeline::offlineLoop() {
     const double ema_alpha = 0.3;   // 平滑系数
 
     while (running_ && !source_->isEof() && !source_->isCancelled()) {
+        // seek 后使用更小的 chunk 快速响应
+        bool just_seeked = seek_flag_.load();
+        int current_chunk_samples = just_seeked ? (SEEK_CHUNK_SEC * SR) : (NORMAL_CHUNK_SEC * SR);
+        double current_chunk_sec = just_seeked ? SEEK_CHUNK_SEC : NORMAL_CHUNK_SEC;
+        
         double media_time = 0.0;
-        int n = source_->pull(pcm.data(), CHUNK_SAMPLES, media_time);
+        int n = source_->pull(pcm.data(), current_chunk_samples, media_time);
         if (n <= 0) break;
 
         // seek 后跳过超前等待和节流，立即处理首个 chunk
