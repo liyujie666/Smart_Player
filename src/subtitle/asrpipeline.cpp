@@ -5,6 +5,10 @@
 #include <QDebug>
 #include <chrono>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 AsrPipeline::AsrPipeline(QObject* parent) : QObject(parent) {}
 
 AsrPipeline::~AsrPipeline() {
@@ -361,32 +365,63 @@ void AsrPipeline::offlineLoop() {
         return;
     }
 
+#ifdef _WIN32
+    // 降低识别线程优先级，避免抢占音视频解码/渲染线程
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+#endif
+
     const int SR = 16000;
-    // Whisper 设计处理 30s chunk；SenseVoice 等ONNX 引擎建议 ≤10s
+    // Whisper 设计处理 30s chunk；SenseVoice 等 ONNX 引擎建议 ≤10s
     const int CHUNK_SEC = (config_.asr_type == AsrEngineType::Whisper) ? 30 : 10;
     const int CHUNK_SAMPLES = CHUNK_SEC * SR;
     std::vector<float> pcm(CHUNK_SAMPLES);
 
+    //======= 自适应节流策略（Adaptive Throttling） =======
+    //
+    // 三阶段模型：
+    //1. 追赶阶段（behind）：识别落后播放进度 → 尽快追赶，但基于 RTF 动态 yield
+    //   2. 跟随阶段（tracking）：识别已追上播放 → 按播放速率匀速推进
+    //   3. 超前阶段（ahead）：超前过多 → 暂停等待播放追上
+    //
+    // 核心指标：RTF（Real-Time Factor）= 处理耗时 / chunk 音频时长
+    //RTF < 1 → 识别比实时快（正常），有余量
+    //   RTF ≥ 1 → 识别比实时慢（压力大），需要减少 yield
+    //
+    // yield 时间 = max(chunk_duration * duty_cycle_factor, min_yield)
+    // duty_cycle_factor根据阶段和RTF 动态调整
+
+    const double chunk_duration_ms = CHUNK_SEC * 1000.0;
+    const double lookahead_ms = lookahead_sec_ * 1000.0;
+
+    // 平滑 RTF 估计（指数移动平均）
+    double ema_rtf = 0.5;   // 初始假设 RTF=0.5
+    const double ema_alpha = 0.3;   // 平滑系数
+
     while (running_ && !source_->isEof() && !source_->isCancelled()) {
         double media_time = 0.0;
         int n = source_->pull(pcm.data(), CHUNK_SAMPLES, media_time);
+        if (n <= 0) break;
 
-        if (n <= 0) break;  // EOF 或错误
-
-        // 节流：识别进度超前播放位置过多时暂缓，避免占满 CPU 导致播放卡顿
+        // --- 超前等待（阶段 3）---
+        // 识别进度大幅超前时，精确等待到播放追上，避免无谓 CPU 消耗
         if (playback_pos_fn_) {
             while (running_ && !source_->isCancelled()) {
                 double pos = playback_pos_fn_();
-                if (media_time - pos <= lookahead_sec_) break;
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                double ahead = media_time - pos;
+                if (ahead <= lookahead_sec_) break;
+                // 精确等待：sleep（超前量- lookahead）的一半，避免过冲
+                int wait_ms = std::max(50, std::min(500, (int)((ahead - lookahead_sec_) * 500)));
+                std::this_thread::sleep_for(std::chrono::milliseconds(wait_ms));
             }
             if (!running_ || source_->isCancelled()) break;
         }
 
-        // 调整实际大小
+        // --- 识别处理 + 计时 ---
+        auto t_start = std::chrono::steady_clock::now();
+
+        const double actual_chunk_sec = (double)n / SR;
         std::vector<float> chunk(pcm.begin(), pcm.begin() + n);
 
-        // 复用已有的 VAD→ASR→翻译 逻辑
         if (config_.enable_vad && vad_ && vad_->isReady()) {
             auto segments = vad_->process(chunk, media_time);
             if (!segments.empty()) {
@@ -394,6 +429,47 @@ void AsrPipeline::offlineLoop() {
             }
         } else {
             processDirectAsr(chunk, media_time);
+        }
+
+        auto t_end = std::chrono::steady_clock::now();
+        double elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+
+        // --- 更新 RTF ---
+        double current_rtf = elapsed_ms / (actual_chunk_sec * 1000.0);
+        ema_rtf = ema_alpha * current_rtf + (1.0 - ema_alpha) * ema_rtf;
+
+        // --- 自适应 yield（阶段 1/2）---
+        // 判断当前所处阶段
+        double ahead_sec = 0.0;
+        if (playback_pos_fn_) {
+            ahead_sec = media_time - playback_pos_fn_();
+        }
+
+        int yield_ms = 0;
+
+        if (ahead_sec <= 0) {
+            // 追赶阶段：识别落后于播放
+            // yield 最小化：仅保证 OS 调度（1-2ms），靠线程优先级保护渲染
+            yield_ms = 2;
+        } else if (ahead_sec < lookahead_sec_) {
+            // 跟随阶段：已追上但未超前太多
+            // 匀速推进：yield = chunk 音频时长 - 处理耗时
+            // 目标：让识别速率 ≈ 播放速率，保持 lookahead 稳定
+            double target_pace_ms = actual_chunk_sec * 1000.0;
+            double spare_ms = target_pace_ms - elapsed_ms;
+
+            if (spare_ms > 0) {
+                // RTF < 1 有余量：yield 部分余量（保留 30% 作为识别 buffer）
+                yield_ms = (int)(spare_ms * 0.7);
+            } else {
+                // RTF ≥ 1 无余量：最小yield
+                yield_ms = 2;
+            }
+        }
+        // ahead_sec >= lookahead_sec_ 的情况在循环头部的超前等待中已处理
+
+        if (yield_ms > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(yield_ms));
         }
     }
 
