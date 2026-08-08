@@ -56,6 +56,26 @@ SubtitlePopup::SubtitlePopup(QWidget *parent)
     row2->addStretch();
     row2->addWidget(translateBtn_);
 
+    auto *row2b = new QHBoxLayout;
+    QLabel *label2b = new QLabel("显示原文");
+
+    showOriginalBtn_ = new QPushButton;
+    showOriginalBtn_->setCheckable(true);
+    showOriginalBtn_->setFixedSize(40, 30);
+    showOriginalBtn_->setIcon(QIcon(":/SmartPlayer-icon/uncheck.png"));
+    showOriginalBtn_->setIconSize(QSize(40, 30));
+    showOriginalBtn_->setFlat(true);
+    showOriginalBtn_->setFocusPolicy(Qt::NoFocus);
+    connect(showOriginalBtn_, &QPushButton::toggled, this, [=](bool checked){
+        showOriginalBtn_->setIcon(QIcon(checked ?
+                                          ":/SmartPlayer-icon/checked.png" :
+                                          ":/SmartPlayer-icon/uncheck.png"));
+    });
+
+    row2b->addWidget(label2b);
+    row2b->addStretch();
+    row2b->addWidget(showOriginalBtn_);
+
     auto *row3 = new QHBoxLayout;
     QLabel *label3 = new QLabel("字体大小");
     label3->setFixedWidth(65);
@@ -81,6 +101,7 @@ SubtitlePopup::SubtitlePopup(QWidget *parent)
 
     mainLayout->addLayout(row1);
     mainLayout->addLayout(row2);
+    mainLayout->addLayout(row2b);
     mainLayout->addLayout(row3);
 
     setStyleSheet(R"(

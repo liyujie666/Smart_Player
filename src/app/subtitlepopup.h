@@ -14,6 +14,7 @@ public:
 
     QPushButton *realtimeBtn_;
     QPushButton *translateBtn_;
+    QPushButton *showOriginalBtn_;
     QSlider *fontSizeSlider_;
     QLabel *fontSizeLabel_;
 

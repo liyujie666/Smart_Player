@@ -318,6 +318,9 @@ void MainWindow::applyPersistentSettings()
     // 静音状态
     player_->setMute(isMutedByUser_);
 
+    // 显示原文开关：跨视频保持（纯渲染层设置）
+    ui->videoWidget->setShowOriginal(ConfigManager::instance().getShowOriginalEnabled());
+
     // 字幕开关：跨视频保持（切换视频后自动恢复 ASR）
     bool asrEnabled = ConfigManager::instance().getAsrEnabled();
     if (asrEnabled) {
@@ -1511,14 +1514,20 @@ void MainWindow::on_subtitleBtn_clicked()
         // toggled 信号还未连接，不会误触发 setAsrEnabled/setTranslationEnabled）
         bool asrOn = ConfigManager::instance().getAsrEnabled();
         bool transOn = ConfigManager::instance().getTranslationEnabled();
+        bool showOrigOn = ConfigManager::instance().getShowOriginalEnabled();
         subtitlePopup_->realtimeBtn_->setChecked(asrOn);
         subtitlePopup_->translateBtn_->setChecked(transOn);
+        subtitlePopup_->showOriginalBtn_->setChecked(showOrigOn);
         // setChecked 时 toggled 信号虽未连接到外部，但 SubtitlePopup 内部的
         // 图标更新 lambda 也在 toggled 上，需手动同步图标
         subtitlePopup_->realtimeBtn_->setIcon(QIcon(asrOn ?
             ":/SmartPlayer-icon/checked.png" : ":/SmartPlayer-icon/uncheck.png"));
         subtitlePopup_->translateBtn_->setIcon(QIcon(transOn ?
             ":/SmartPlayer-icon/checked.png" : ":/SmartPlayer-icon/uncheck.png"));
+        subtitlePopup_->showOriginalBtn_->setIcon(QIcon(showOrigOn ?
+            ":/SmartPlayer-icon/checked.png" : ":/SmartPlayer-icon/uncheck.png"));
+        // 同步到渲染器
+        ui->videoWidget->setShowOriginal(showOrigOn);
 
         connect(subtitlePopup_->realtimeBtn_, &QPushButton::toggled, this, [this](bool on){
             qDebug() << "实时字幕:" << on;
@@ -1533,6 +1542,12 @@ void MainWindow::on_subtitleBtn_clicked()
             ConfigManager::instance().setTranslationEnabled(on);
             // 实时生效
             player_->setTranslationEnabled(on);
+        });
+
+        connect(subtitlePopup_->showOriginalBtn_, &QPushButton::toggled, this, [this](bool on){
+            qDebug() << "显示原文:" << on;
+            ConfigManager::instance().setShowOriginalEnabled(on);
+            ui->videoWidget->setShowOriginal(on);
         });
 
         connect(subtitlePopup_->fontSizeSlider_, &QSlider::valueChanged, this, [this](int val){

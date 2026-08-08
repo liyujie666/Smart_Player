@@ -1084,10 +1084,15 @@ void PlayerCore::checkAndUpdateSubtitle()
     if (sub.text != current_display_sub_.text ||
         sub.translated_text != current_display_sub_.translated_text) {
         current_display_sub_ = sub;
-        // 如果有译文，拼接为 "原文\n译文"
-        QString display = QString::fromStdString(sub.text);
+        // 传递格式：译文 \x1F 原文
+        // 渲染器根据分隔符分别绘制译文（白色大字）和原文（浅灰小字）
+        // 如果没有译文，直接传原文
+        QString display;
         if (!sub.translated_text.empty()) {
-            display += "\n" + QString::fromStdString(sub.translated_text);
+            display = QString::fromStdString(sub.translated_text) +
+                      "\x1F" + QString::fromStdString(sub.text);
+        } else {
+            display = QString::fromStdString(sub.text);
         }
         emit subtitleReady(display);
     }

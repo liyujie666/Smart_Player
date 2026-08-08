@@ -39,6 +39,7 @@ ConfigManager::ConfigManager()
 
     // 翻译配置
     if (!settings_->contains("translate/enabled")) settings_->setValue("translate/enabled", false);
+    if (!settings_->contains("subtitle/showOriginal")) settings_->setValue("subtitle/showOriginal", false);
     if (!settings_->contains("translate/type")) settings_->setValue("translate/type", 3); // 3=TencentCloud
     if (!settings_->contains("translate/targetLang")) settings_->setValue("translate/targetLang", "zh");
     if (!settings_->contains("translate/tencentSecretId")) settings_->setValue("translate/tencentSecretId", "");
@@ -268,6 +269,16 @@ bool ConfigManager::getTranslationEnabled() const
 void ConfigManager::setTranslationEnabled(bool enabled)
 {
     settings_->setValue("translate/enabled", enabled);
+}
+
+bool ConfigManager::getShowOriginalEnabled() const
+{
+    return settings_->value("subtitle/showOriginal", false).toBool();
+}
+
+void ConfigManager::setShowOriginalEnabled(bool enabled)
+{
+    settings_->setValue("subtitle/showOriginal", enabled);
 }
 
 QString ConfigManager::getTranslateTargetLang() const

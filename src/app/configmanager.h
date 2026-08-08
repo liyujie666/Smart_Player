@@ -77,6 +77,9 @@ public:
     bool getTranslationEnabled() const;
     void setTranslationEnabled(bool enabled);
 
+    bool getShowOriginalEnabled() const;
+    void setShowOriginalEnabled(bool enabled);
+
     QString getTranslateTargetLang() const;
     void setTranslateTargetLang(const QString& lang);
 

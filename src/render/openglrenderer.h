@@ -47,6 +47,7 @@ public:
     void setContrast(float value);
     void setSaturation(float value);
     void setSubtitleFontSize(int size);
+    void setShowOriginal(bool show);
 
 protected:
     void initializeGL() override;
@@ -103,6 +104,7 @@ private:
     static constexpr float SUBTITLE_BG_ALPHA = 0.7f;
     int subtitleFontSize_ = 26;
     bool subtitleDirty_ = false;
+    bool showOriginal_ = false;
     QMutex subtitleMutex_;
 };
 
