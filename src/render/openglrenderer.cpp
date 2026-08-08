@@ -452,10 +452,9 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             // 清空操作放到锁外
         } else {
             // 解析双语分隔符 \x1F：译文 \x1F 原文
-            // 无分隔符时为纯原文（翻译关闭或原文为中文）
             int sepIdx = text.indexOf('\x1F');
-            QString translatedText;  // 译文（主显示，白色大字）
-            QString originalText;     // 原文（辅显示，浅灰小字，仅 showOriginal_ 时绘制）
+            QString translatedText;
+            QString originalText;
             bool hasTranslation = false;
 
             if (sepIdx >= 0) {
@@ -466,11 +465,11 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
                 originalText = text.simplified();
             }
 
-            // 决定实际要绘制的内容
-            // 有译文时：主显示译文，showOriginal_ 时追加原文
-            // 无译文时：显示原文
             QString mainText = hasTranslation ? translatedText : originalText;
             QString subText = (hasTranslation && showOriginal_) ? originalText : QString();
+
+            qreal pr = devicePixelRatio();
+            int logicalWidth = qRound((qreal)width_ / pr);  // 逻辑像素宽度
 
             QFont mainFont;
             mainFont.setPointSize(subtitleFontSize_);
@@ -478,7 +477,6 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             mainFont.setFamily("Microsoft YaHei");
             QFontMetrics mainFm(mainFont);
 
-            // 原文用较小字体（主字体的 0.75 倍）
             QFont subFont;
             int subFontSize = qMax(10, (int)(subtitleFontSize_ * 0.75));
             subFont.setPointSize(subFontSize);
@@ -487,15 +485,13 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             QFontMetrics subFm(subFont);
 
             const int paddingH = 20;
-            const int paddingV = 6;
-            const int mainLineHeight = mainFm.height();
-            const int subLineHeight = subFm.height();
-            const int gap = 4;  // 译文与原文之间的间距
-            const int maxLineCount = 6;
-            const int maxWidth = qMax(width_ * 2 / 3, 200);
+            const int paddingV = 8;
+            const int gap = 4;
+            // 用逻辑像素计算可用宽度
+            const int maxWidth = qMax(logicalWidth * 2 / 3, 200);
 
-            // 自动换行辅助
-            auto wrapText = [&maxWidth, &paddingH](const QString& text, QFontMetrics& fm, int maxLines) -> QStringList {
+            // 自动换行：按逻辑像素宽度拆分
+            auto wrapText = [&maxWidth, &paddingH](const QString& text, const QFontMetrics& fm, int maxLines) -> QStringList {
                 QStringList lines;
                 QString current;
                 for (QChar ch : text) {
@@ -504,40 +500,40 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
                             lines.append(current);
                             current.clear();
                         }
-                        if (lines.size() >= maxLines) {
-                            lines.append(current);
-                            return lines;
-                        }
+                        if (lines.size() >= maxLines) return lines;
                     }
                     current += ch;
                 }
-                if (!current.isEmpty() && lines.size() < maxLines) {
-                    lines.append(current);
-                }
+                if (!current.isEmpty()) lines.append(current);
                 return lines;
             };
 
-            QStringList mainLines = wrapText(mainText, mainFm, maxLineCount);
-            int subMaxLines = qMax(1, maxLineCount - mainLines.size());
-            QStringList subLines = subText.isEmpty() ? QStringList() : wrapText(subText, subFm, subMaxLines);
+            // 译文最多 3 行，原文最多 4 行，总共不超过 7 行
+            const int maxMainLines = 3;
+            const int maxSubLines = 4;
+            QStringList mainLines = wrapText(mainText, mainFm, maxMainLines);
+            QStringList subLines = subText.isEmpty() ? QStringList() : wrapText(subText, subFm, maxSubLines);
 
-            // 计算总尺寸
-            int subWidth = 0;
-            for (const QString& l : mainLines) {
-                subWidth = qMax(subWidth, mainFm.horizontalAdvance(l));
-            }
-            for (const QString& l : subLines) {
-                subWidth = qMax(subWidth, subFm.horizontalAdvance(l));
-            }
-            subWidth += paddingH * 2;
+            // 用 leading-free 行高：ascent + descent，避免 QFontMetrics::height() 额外行距
+            const int mainLineH = mainFm.ascent() + mainFm.descent();
+            const int subLineH = subFm.ascent() + subFm.descent();
 
-            int subHeight = mainLines.size() * mainLineHeight
-                          + (subLines.isEmpty() ? 0 : gap + subLines.size() * subLineHeight)
-                          + paddingV * 2;
+            // 计算背景总尺寸（逻辑像素）
+            int bgWidth = 0;
+            for (const QString& l : mainLines)
+                bgWidth = qMax(bgWidth, mainFm.horizontalAdvance(l));
+            for (const QString& l : subLines)
+                bgWidth = qMax(bgWidth, subFm.horizontalAdvance(l));
+            bgWidth += paddingH * 2;
 
-            qreal pr = devicePixelRatio();
-            int prSubWidth = qRound(subWidth * pr);
-            int prSubHeight = qRound(subHeight * pr);
+            int bgHeight = paddingV                              // 上边距
+                         + mainLines.size() * mainLineH          // 译文行
+                         + (subLines.isEmpty() ? 0 : gap + subLines.size() * subLineH)  // 间距 + 原文行
+                         + paddingV;                             // 下边距
+
+            // 转物理像素
+            int prSubWidth = qRound(bgWidth * pr);
+            int prSubHeight = qRound(bgHeight * pr);
 
             img = QImage(prSubWidth, prSubHeight, QImage::Format_RGBA8888);
             img.setDevicePixelRatio(pr);
@@ -547,15 +543,13 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
             painter.setRenderHint(QPainter::TextAntialiasing);
             painter.setRenderHint(QPainter::SmoothPixmapTransform);
 
-            int y = paddingV;
-
-            // 绘制主文字（译文或无翻译时的原文）：白色粗体
+            // 绘制译文：白色粗体
             painter.setPen(QColor(255, 255, 255, 255));
             painter.setFont(mainFont);
-            y += mainFm.ascent();
+            int y = paddingV + mainFm.ascent();  // 第一行 baseline
             for (const QString& l : mainLines) {
                 painter.drawText(paddingH, y, l);
-                y += mainLineHeight;
+                y += mainLineH;
             }
 
             // 绘制原文：浅灰色小字
@@ -565,7 +559,7 @@ void OpenGLRenderer::uploadSubtitleTexture(const QString& text)
                 y += gap + subFm.ascent();  // 间距 + 原文首行 baseline
                 for (const QString& l : subLines) {
                     painter.drawText(paddingH, y, l);
-                    y += subLineHeight;
+                    y += subLineH;
                 }
             }
 
