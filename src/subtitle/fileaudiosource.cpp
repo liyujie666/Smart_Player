@@ -60,6 +60,7 @@ qWarning() << "[FileAudioSource] No audio stream found";
     demux_->seek(0);
     dec_->flush();
     current_time_sec_ = 0.0;
+    time_calibrated_ = false;  // 首次 fillBuffer 时用 pts 校准
     eof_ = false;
     cancelled_ = false;
     pcm_buf_.clear();
@@ -157,12 +158,11 @@ bool FileAudioSource::fillBuffer() {
             pcm_buf_.insert(pcm_buf_.end(), (float*)buf, (float*)buf + samples);
             pcm_read_pos_ = 0;
 
-            // 用 frame->pts 校准时间戳（seek 后第一帧的 pts 可能与 pos_sec 不同）
-            if (audio_tb_.den > 0 && frame->pts != AV_NOPTS_VALUE) {
-                double pts_sec = frame->pts * av_q2d(audio_tb_);
-                // seek 后首次校准：直接用 pts 覆盖
-                // 后续帧：pts 单调递增，也直接用（比累加更准确）
-                current_time_sec_ = pts_sec;
+            // seek 后首次校准：用真实 pts 修正估算值（demuxer seek 到关键帧
+            // 位置与目标位置有偏差）。校准后恢复累加方式，避免 pull 内多次
+            // fillBuffer 覆盖导致 mediaTimeSec 偏向 chunk 尾部。
+            if (!time_calibrated_ && audio_tb_.den > 0 && frame->pts != AV_NOPTS_VALUE) {
+                current_time_sec_ = frame->pts * av_q2d(audio_tb_);
                 time_calibrated_ = true;
             }
 
