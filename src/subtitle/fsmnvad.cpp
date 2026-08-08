@@ -300,6 +300,7 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
     const size_t samples_per_infer = (size_t)infer_chunk_frames_ * frame_shift;
 
     size_t pos = 0;
+    int infer_count = 0;
     while (pos + samples_per_infer + overlap <= audio.size()) {
         std::vector<float> seg(audio.begin() + pos,
                                audio.begin() + pos + samples_per_infer + overlap);
@@ -309,7 +310,6 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
         if (nf > 0) {
             auto probs = inferFeatures(feats, nf);
             if (probs.empty()) {
-                // 推理不可用：禁用 VAD，让上层降级到 no-VAD 模式
                 qWarning() << "[FsmnVad] inference unavailable, disabling VAD";
                 ready_ = false;
                 return {};
@@ -319,6 +319,15 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
                     (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
                 updateState(p, frame_time);
                 total_frames_processed_++;
+            }
+            infer_count++;
+            // 首次推理打印诊断信息
+            if (infer_count == 1) {
+                float max_p = *std::max_element(probs.begin(), probs.end());
+                qDebug() << "[FsmnVad] first infer: frames=" << probs.size()
+                         << "max_prob=" << max_p
+                         << "threshold=" << cfg_.threshold
+                         << "state=" << (int)state_;
             }
         }
         pos += samples_per_infer;
@@ -362,6 +371,7 @@ void FsmnVad::updateState(float speech_prob, double frame_time) {
             state_ = State::Speech;
             current_speech_start_ = frame_time;
             silence_frame_count_ = 0;
+            qDebug() << "[FsmnVad] speech start @" << frame_time << "s prob=" << speech_prob;
         }
         break;
 

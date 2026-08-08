@@ -57,8 +57,9 @@ private:
         std::vector<Ort::AllocatedStringPtr> input_name_ptrs;
         std::vector<Ort::AllocatedStringPtr> output_name_ptrs;
 
-        int n_mels = 80;
+        int n_mels = 80;       // 模型输入维度（含 LFR 拼接）
         int vocab_size = 0;
+        int lfr_m = 7;         // LFR 拼接帧数（model_feat_dim / 80）
 
         // 输入索引（SenseVoice 4 输入），-1 表示该输入不存在
         int idx_speech = 0;

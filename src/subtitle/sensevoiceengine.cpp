@@ -60,13 +60,26 @@ bool SenseVoiceEngine::loadModel(const std::string& model_dir) {
         impl_->output_names.push_back(impl_->output_name_ptrs.back().get());
     }
 
-    // 推断 mel 维度
+    // 推断模型输入维度（shape[2] = FBank维度 × LFR拼接帧数）
+    // SenseVoice: 560 = 80(FBank) × 7(LFR m)，FBank 维度固定 80
+    int model_feat_dim = 560;
     if (n_inputs > 0) {
         auto shape = impl_->session->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
         if (shape.size() >= 3 && shape[2] > 0) {
-            impl_->n_mels = (int)shape[2];
-            n_mels_ = impl_->n_mels;
+            model_feat_dim = (int)shape[2];
         }
+    }
+    impl_->n_mels = model_feat_dim;
+    impl_->lfr_m = lfr_m;
+
+    // FBank 维度始终是 80（不随模型输入维度变化）
+    // LFR 拼接帧数 = model_feat_dim / 80
+    n_mels_ = 80;
+    int lfr_m = model_feat_dim / n_mels_;
+    if (lfr_m <= 0 || model_feat_dim % n_mels_ != 0) {
+        qWarning() << "[SenseVoice] unexpected model_feat_dim=" << model_feat_dim
+                   << ", cannot derive LFR m from n_mels=" << n_mels_;
+        return false;
     }
 
     // 记录各输入索引（SenseVoice 有 4 个输入：speech, speech_lengths, language, textnorm）
@@ -82,9 +95,11 @@ bool SenseVoiceEngine::loadModel(const std::string& model_dir) {
     for (auto& n : impl_->input_names) in_names << n;
     for (auto& n : impl_->output_names) out_names << n;
     qDebug() << "[SenseVoice] Model loaded:" << model_path
-             << "n_mels=" << n_mels_
-             << "inputs:" << in_names
-             << "outputs:" << out_names;
+             << "feat_dim=" << model_feat_dim
+             << "fbank_mels=" << n_mels_
+             << "lfr_m=" << lfr_m
+             << "n_inputs=" << n_inputs
+             << "n_outputs=" << n_outputs;
 
     return true;
 }
@@ -180,27 +195,37 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
 #if HAS_ONNXRUNTIME
     if (!impl_ || !impl_->session) return false;
 
-    // 1. FBank 特征提取
+    // 1. FBank 特征提取（80 维）
     FbankExtractor fbank;
     FbankExtractor::Config fbank_cfg;
-    fbank_cfg.n_mels = n_mels_;
+    fbank_cfg.n_mels = n_mels_;        // 80
     fbank_cfg.frame_length = frame_length_;
     fbank_cfg.frame_shift = frame_shift_;
     fbank.init(fbank_cfg);
 
-    auto features = fbank.extract(pcm);
-    if (features.empty()) return false;
+    auto fbank_feats = fbank.extract(pcm);
+    if (fbank_feats.empty()) return false;
 
-    int num_frames = (int)features.size();
-    int n_mels = n_mels_;
+    const int T_raw = (int)fbank_feats.size();
+    const int n_mels = n_mels_;        // 80
+    const int lfr_m = impl_->lfr_m;    // 7
+    const int pad = (lfr_m - 1) / 2;   // LFR 左侧上下文帧数
+    const int feat_dim = n_mels * lfr_m;  // 560
 
-    // 2. 展平特征为 1D 数组 (1, T, n_mels)
-    std::vector<float> flat_features(num_frames * n_mels);
-    for (int t = 0; t < num_frames; ++t) {
-        for (int m = 0; m < n_mels; ++m) {
-            flat_features[t * n_mels + m] = features[t][m];
+    // 2. LFR(m, 1)：左侧复制首帧 padding，取 m 帧窗口拼接
+    std::vector<float> flat_features((size_t)T_raw * feat_dim, 0.0f);
+    for (int i = 0; i < T_raw; ++i) {
+        for (int k = 0; k < lfr_m; ++k) {
+            int src = i - pad + k;
+            if (src < 0) src = 0;
+            if (src >= T_raw) src = T_raw - 1;
+            const auto& f = fbank_feats[src];
+            std::copy(f.begin(), f.begin() + n_mels,
+                      flat_features.begin() + (size_t)i * feat_dim + (size_t)k * n_mels);
         }
     }
+
+    int num_frames = T_raw;
 
     // 3. 按输入索引构造全部输入张量
     int n_inputs = (int)impl_->input_names.size();
@@ -215,7 +240,7 @@ bool SenseVoiceEngine::recognize(const std::vector<float>& pcm,
 
     for (int i = 0; i < n_inputs; ++i) {
         if (i == impl_->idx_speech) {
-            std::vector<int64_t> speech_shape = {1, num_frames, n_mels};
+            std::vector<int64_t> speech_shape = {1, num_frames, feat_dim};
             inputs.push_back(Ort::Value::CreateTensor<float>(
                 impl_->memory_info, flat_features.data(), flat_features.size(),
                 speech_shape.data(), speech_shape.size()));

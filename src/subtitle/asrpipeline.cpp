@@ -314,19 +314,26 @@ void AsrPipeline::processVadSegments(const std::vector<VadSegment>& segments,
         std::vector<float> speech_pcm(pcm.begin() + start_sample, pcm.begin() + end_sample);
 
         std::vector<SubtitleItem> results;
-        if (asr_->recognize(speech_pcm, results, seg.start_sec)) {
-            for (auto& item : results) {
-                if (item.text != last_text_) {
-                    last_text_ = item.text;
-                    queue_->push(item);
+        bool ok = asr_->recognize(speech_pcm, results, seg.start_sec);
+        if (!ok) {
+            qDebug() << "[AsrPipeline] ASR recognize failed for seg" << i;
+            continue;
+        }
+        qDebug() << "[AsrPipeline] seg" << i
+                 << "@" << seg.start_sec << "-" << seg.end_sec << "s"
+                 << "pcm=" << speech_pcm.size() << "samples"
+                 << "results=" << results.size();
+        for (auto& item : results) {
+            if (item.text != last_text_) {
+                last_text_ = item.text;
+                queue_->push(item);
                 emit subtitleReady(item);
 
-                    // 送入翻译队列
-                    if (config_.enable_translation && translator_) {
-                        std::lock_guard<std::mutex> lock(translate_mtx_);
-                        translate_queue_.push(item);
-                        translate_cv_.notify_one();
-                    }
+                // 送入翻译队列
+                if (config_.enable_translation && translator_) {
+                    std::lock_guard<std::mutex> lock(translate_mtx_);
+                    translate_queue_.push(item);
+                    translate_cv_.notify_one();
                 }
             }
         }
@@ -335,25 +342,27 @@ void AsrPipeline::processVadSegments(const std::vector<VadSegment>& segments,
 
 void AsrPipeline::processDirectAsr(const std::vector<float>& pcm, double base_sec) {
     std::vector<SubtitleItem> results;
-    if (asr_->recognize(pcm, results, base_sec)) {
-        std::string text;
-        for (auto& i : results) text = AsrUtil::mergeOverlap(text, i.text);
+    bool ok = asr_->recognize(pcm, results, base_sec);
+    qDebug() << "[AsrPipeline] directAsr @" << base_sec << "s"
+             << "pcm=" << pcm.size() << "ok=" << ok << "results=" << results.size();
+    if (!ok) return;
+    std::string text;
+    for (auto& i : results) text = AsrUtil::mergeOverlap(text, i.text);
 
-        if (!text.empty() && text != last_text_) {
-   last_text_ = text;
-            SubtitleItem item;
-            item.text = text;
-            item.start_sec = results.front().start_sec;
-            item.end_sec = results.back().end_sec;
-          queue_->push(item);
-         emit subtitleReady(item);
+    if (!text.empty() && text != last_text_) {
+        last_text_ = text;
+        SubtitleItem item;
+        item.text = text;
+        item.start_sec = results.front().start_sec;
+        item.end_sec = results.back().end_sec;
+        queue_->push(item);
+        emit subtitleReady(item);
 
-       // 送入翻译队列
-     if (config_.enable_translation && translator_) {
-std::lock_guard<std::mutex> lock(translate_mtx_);
-                translate_queue_.push(item);
-    translate_cv_.notify_one();
-            }
+        // 送入翻译队列
+        if (config_.enable_translation && translator_) {
+            std::lock_guard<std::mutex> lock(translate_mtx_);
+            translate_queue_.push(item);
+            translate_cv_.notify_one();
         }
     }
 }
@@ -375,6 +384,11 @@ void AsrPipeline::offlineLoop() {
     const int CHUNK_SEC = (config_.asr_type == AsrEngineType::Whisper) ? 30 : 10;
     const int CHUNK_SAMPLES = CHUNK_SEC * SR;
     std::vector<float> pcm(CHUNK_SAMPLES);
+
+    qDebug() << "[AsrPipeline] offlineLoop started:"
+             << "chunk_sec=" << CHUNK_SEC
+             << "vad=" << (config_.enable_vad && vad_ && vad_->isReady() ? "on" : "off")
+             << "asr=" << currentAsrEngineName().c_str();
 
     //======= 自适应节流策略（Adaptive Throttling） =======
     //
@@ -424,10 +438,14 @@ void AsrPipeline::offlineLoop() {
 
         if (config_.enable_vad && vad_ && vad_->isReady()) {
             auto segments = vad_->process(chunk, media_time);
+            qDebug() << "[AsrPipeline] chunk @" << media_time << "s"
+                     << "vad_segments=" << segments.size();
             if (!segments.empty()) {
                 processVadSegments(segments, chunk, media_time);
             }
         } else {
+            qDebug() << "[AsrPipeline] chunk @" << media_time << "s"
+                     << "direct_asr (no VAD)";
             processDirectAsr(chunk, media_time);
         }
 
