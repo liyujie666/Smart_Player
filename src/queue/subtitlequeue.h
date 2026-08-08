@@ -107,7 +107,20 @@ private:
         for (const auto& sub : batch) {
             std::string key = std::to_string((int64_t)(sub.start_sec*1000)) + "|" +
                               std::to_string((int64_t)(sub.end_sec*1000)) + "|" + sub.text;
-            if (seen_.count(key)) continue;
+            if (seen_.count(key)) {
+                // 译文回填：若新条目携带译文，更新已有记录
+                if (!sub.translated_text.empty()) {
+                    for (auto& s : cache_) {
+                        if (s.text == sub.text &&
+                            (int64_t)(s.start_sec*1000) == (int64_t)(sub.start_sec*1000) &&
+                            (int64_t)(s.end_sec*1000) == (int64_t)(sub.end_sec*1000)) {
+                            s.translated_text = sub.translated_text;
+                            break;
+                        }
+                    }
+                }
+                continue;
+            }
             seen_.insert(key);
             cache_.push_back(sub);
         }

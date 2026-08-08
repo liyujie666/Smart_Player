@@ -32,7 +32,7 @@ bool FsmnVad::loadModel(const std::string& model_dir) {
     ort_ctx_ = std::make_unique<OrtContext>();
     Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(2);
     ort_ctx_->session = std::make_unique<Ort::Session>(
-        OrtUtil::instance().env(), model_path.toUtf8().constData(), opts);
+        OrtUtil::instance().env(), ORT_PATH(model_path), opts);
     // memory_info 已在 OrtContext 构造时创建
 
     // 读取输入输出名称

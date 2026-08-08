@@ -121,7 +121,6 @@ private:
     void clearAllQueues();        // 清空所有队列(Seek/Stop用)
     void initAudioModule();       // 初始化音频模块(重采样/滤镜/输出)
     void initVideoModule();       // 初始化视频模块(转换器)
-    void onSubtitleReady(const SubtitleItem& item);
     void saveFrameToImage(const QByteArray& frame_data, int width, int height, AVPixelFormat format);
     double getSpeedFromIndex(int speedIndex);
     void checkAndUpdateSubtitle();

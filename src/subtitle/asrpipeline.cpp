@@ -98,7 +98,12 @@ bool AsrPipeline::init(const PipelineConfig& cfg, AVStream* audio, SubtitleQueue
 void AsrPipeline::start() {
     if (running_.exchange(true)) return;
 
-    vad_asr_thread_ = std::thread(&AsrPipeline::vadAsrLoop, this);
+    // 根据音频源模式选择处理线程
+    if (source_ && source_->mode() == AudioSourceMode::Pull) {
+        vad_asr_thread_ = std::thread(&AsrPipeline::offlineLoop, this);
+    } else {
+        vad_asr_thread_ = std::thread(&AsrPipeline::vadAsrLoop, this);
+    }
 
     if (config_.enable_translation && translator_ && translator_->isReady()) {
         translate_running_ = true;
@@ -128,22 +133,33 @@ void AsrPipeline::reset() {
     ring_.clear();
     last_text_.clear();
     if (vad_) vad_->reset();
-    if (asr_) asr_->reset();
+ if (asr_) asr_->reset();
     {
         std::lock_guard<std::mutex> lock(translate_mtx_);
         translate_queue_ = {};
     }
 }
 
+void AsrPipeline::setSource(std::unique_ptr<IAudioSource> source) {
+    source_ = std::move(source);
+}
+
 void AsrPipeline::feedAudio(AVFrame* frame) {
+    // 新架构：优先委托给音频源
+    if (source_ && source_->mode() == AudioSourceMode::Push) {
+   source_->pushFrame(frame);
+        return;
+    }
+
+    // 兼容旧路径：直接使用内部 resampler + ring
     if (!resampler_ || !frame) return;
 
     uint8_t* buf = (uint8_t*)av_malloc(resampler_->outputBufferSize(frame->nb_samples));
     int samples = 0;
     if (resampler_->resample(frame, &buf, &samples) >= 0 && samples > 0) {
-        double pts = frame->pts * av_q2d(tb_);
+     double pts = frame->pts * av_q2d(tb_);
         ring_.push((float*)buf, samples, pts);
-    }
+ }
     av_freep(&buf);
 }
 
@@ -226,38 +242,52 @@ std::string AsrPipeline::currentTranslatorName() const {
 
 void AsrPipeline::vadAsrLoop() {
     const int SR = 16000;
-    const size_t win = 3* SR;    // 3s 窗口
+ const size_t win = 3* SR;    // 3s 窗口
     const size_t step = 1 * SR;   // 1s 步进
     std::vector<float> buf(win);
 
+    // 判断数据源：优先使用 source_（Push 模式），否则回退到内部 ring_
+    const bool use_source = source_ && source_->mode() == AudioSourceMode::Push;
+
     while (running_) {
-        if (ring_.available()< win) {
+        size_t avail = use_source ? source_->available() : ring_.available();
+  if (avail < win) {
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            continue;
+      continue;
         }
 
-        double start_time = ring_.head_time_sec();
-        ring_.peek(buf.data(), win);
+        double start_time;
+     if (use_source) {
+ start_time = source_->headTimeSec();
+            source_->peek(buf.data(), win);
+        } else {
+     start_time = ring_.head_time_sec();
+     ring_.peek(buf.data(), win);
+   }
 
         if (config_.enable_vad && vad_ && vad_->isReady()) {
             auto segments = vad_->process(buf, start_time);
-            if (!segments.empty()) {
-                processVadSegments(segments, buf, start_time);
-            }
-        } else {
-            // 无VAD，直接做ASR
-            processDirectAsr(buf, start_time);
+     if (!segments.empty()) {
+       processVadSegments(segments, buf, start_time);
+    }
+ } else {
+   // 无VAD，直接做ASR
+      processDirectAsr(buf, start_time);
         }
 
-        ring_.consume(step);
+   if (use_source) {
+        source_->consume(step);
+        } else {
+            ring_.consume(step);
+        }
     }
 
     // 刷新 VAD 残余
     if (vad_ && vad_->isReady()) {
         auto segments = vad_->flush();
-        if (!segments.empty() && !buf.empty()) {
-            // flush阶段用最后缓冲的数据
-            processVadSegments(segments, buf, ring_.head_time_sec());
+      if (!segments.empty() && !buf.empty()) {
+            double flush_time = use_source ? source_->headTimeSec() : ring_.head_time_sec();
+            processVadSegments(segments, buf, flush_time);
         }
     }
 }
@@ -306,22 +336,57 @@ void AsrPipeline::processDirectAsr(const std::vector<float>& pcm, double base_se
         for (auto& i : results) text = AsrUtil::mergeOverlap(text, i.text);
 
         if (!text.empty() && text != last_text_) {
-            last_text_ = text;
+   last_text_ = text;
             SubtitleItem item;
             item.text = text;
             item.start_sec = results.front().start_sec;
             item.end_sec = results.back().end_sec;
-            queue_->push(item);
-            emit subtitleReady(item);
+          queue_->push(item);
+         emit subtitleReady(item);
 
-            // 送入翻译队列
-            if (config_.enable_translation && translator_) {
-                std::lock_guard<std::mutex> lock(translate_mtx_);
+       // 送入翻译队列
+     if (config_.enable_translation && translator_) {
+std::lock_guard<std::mutex> lock(translate_mtx_);
                 translate_queue_.push(item);
-                translate_cv_.notify_one();
+    translate_cv_.notify_one();
             }
         }
     }
+}
+
+void AsrPipeline::offlineLoop() {
+    if (!source_) {
+    qWarning() << "[AsrPipeline] offlineLoop: no source bound";
+        running_ = false;
+        return;
+    }
+
+    const int SR = 16000;
+    const int CHUNK_SEC = 30;
+    const int CHUNK_SAMPLES = CHUNK_SEC * SR;
+    std::vector<float> pcm(CHUNK_SAMPLES);
+
+    while (running_ && !source_->isEof() && !source_->isCancelled()) {
+    double media_time = 0.0;
+        int n = source_->pull(pcm.data(), CHUNK_SAMPLES, media_time);
+
+        if (n <= 0) break;  // EOF 或错误
+
+     // 调整实际大小
+        std::vector<float> chunk(pcm.begin(), pcm.begin() + n);
+
+        // 复用已有的 VAD→ASR→翻译 逻辑
+        if (config_.enable_vad && vad_ && vad_->isReady()) {
+            auto segments = vad_->process(chunk, media_time);
+            if (!segments.empty()) {
+        processVadSegments(segments, chunk, media_time);
+     }
+        } else {
+          processDirectAsr(chunk, media_time);
+        }
+    }
+
+    running_ = false;
 }
 
 void AsrPipeline::translateLoop() {

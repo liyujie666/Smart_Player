@@ -13,6 +13,7 @@
 #include "ivadengine.h"
 #include "iasrengine.h"
 #include "itranslator.h"
+#include "iaudiosource.h"
 #include "queue/subtitlequeue.h"
 #include "resampler/resampler.h"
 #include "utils/audioringbuffer.h"
@@ -51,6 +52,10 @@ public:
     void stop();
     void reset();
 
+    // ===== 新架构：绑定音频源，Pipeline 自主驱动 =====
+    void setSource(std::unique_ptr<IAudioSource> source);
+    IAudioSource* source() const { return source_.get(); }
+
     // 实时模式：外部送入解码后的音频帧
     void feedAudio(AVFrame* frame);
 
@@ -73,13 +78,14 @@ signals:
     void engineError(const QString& error);
 
 private:
-    void vadAsrLoop();       // VAD + ASR 处理线程
+    void vadAsrLoop();       // VAD + ASR 处理线程（实时模式：peek/consume）
+    void offlineLoop();   // 离线模式处理线程（pull 音频源）
     void translateLoop();    // 翻译处理线程
 
     // 内部：对VAD输出的语音段进行ASR
     void processVadSegments(const std::vector<VadSegment>& segments,
-                            const std::vector<float>& pcm,
-                            double base_sec);
+        const std::vector<float>& pcm,
+      double base_sec);
 
     // 内部：直接做ASR（无VAD时的回退路径）
     void processDirectAsr(const std::vector<float>& pcm, double base_sec);
@@ -88,10 +94,13 @@ private:
     PipelineConfig config_;
     SubtitleQueue* queue_ = nullptr;
 
-    // 重采样
+    // 音频源（新架构）
+    std::unique_ptr<IAudioSource> source_;
+
+       // 重采样（兼容旧的 feedAudio 路径）
     std::unique_ptr<Resampler> resampler_;
 
-    // 音频缓冲（实时模式用）
+    // 音频缓冲（实时模式用，兼容旧路径 / 无 source 时的 feedAudio）
     AudioPcmRingBuffer ring_;
     AVRational tb_{0, 0};
 

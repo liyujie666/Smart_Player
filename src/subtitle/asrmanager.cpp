@@ -1,7 +1,8 @@
 #include "asrmanager.h"
-#include "asrrealtimestrategy.h"
-#include "asrofflinestrategy.h"
+#include "fileaudiosource.h"
+#include "liveaudiosource.h"
 #include "asrmodelcache.h"
+#include <QDebug>
 
 AsrManager::AsrManager(QObject *parent) : QObject(parent) {}
 AsrManager::~AsrManager() { stop(); }
@@ -17,63 +18,76 @@ void AsrManager::warmUp() {
     AsrModelCache::instance().setModelPath(model_path_);
 }
 
-void AsrManager::switchMode(Demuxer::MediaType type) {
-    if (strategy_ && last_type_ == type) return;
-    stop();
-
-    queue_.clear();
-    strategy_.reset();
-    last_type_ = type;
-
-    if (type == Demuxer::MediaType::RTSP_TYPE || type == Demuxer::MediaType::RTMP_TYPE) {
-        auto s = std::make_unique<AsrRealtimeStrategy>();
-        s->setModel(model_path_);
-        s->setAsrEngineType(asr_engine_type_);
-        s->setVadEnabled(vad_enabled_);
-        s->setVadModelPath(vad_model_path_);
-        s->setTranslatorType(translator_type_);
-        s->setTranslateConfig(translate_config_);
-        s->setTranslationEnabled(translation_enabled_);
-        strategy_ = std::move(s);
-        queue_.setMode(SubtitleQueue::Mode::Live);
-    } else {
-        auto s = std::make_unique<AsrOfflineStrategy>();
-        s->setModel(model_path_);
-        s->setAsrEngineType(asr_engine_type_);
-        s->setVadEnabled(vad_enabled_);
-        s->setVadModelPath(vad_model_path_);
-        s->setTranslatorType(translator_type_);
-        s->setTranslateConfig(translate_config_);
-        s->setTranslationEnabled(translation_enabled_);
-        strategy_ = std::move(s);
-        queue_.setMode(SubtitleQueue::Mode::Offline);
-    }
-}
-
 bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* audio) {
     stop();
-    switchMode(type);
-    return strategy_->init(url, audio, &queue_);
+    last_type_ = type;
+
+    // 1. 创建音频源
+    std::unique_ptr<IAudioSource> source;
+    if (type == Demuxer::MediaType::RTSP_TYPE || type == Demuxer::MediaType::RTMP_TYPE) {
+        // 实时模式：LiveAudioSource
+        auto live = std::make_unique<LiveAudioSource>(audio);
+      if (!live->open()) {
+            qWarning() << "[AsrManager] LiveAudioSource open failed";
+  return false;
+  }
+        source = std::move(live);
+        queue_.setMode(SubtitleQueue::Mode::Live);
+    } else {
+        // 离线模式：FileAudioSource
+        auto file = std::make_unique<FileAudioSource>(url);
+   if (!file->open()) {
+            qWarning() << "[AsrManager] FileAudioSource open failed";
+            return false;
+        }
+ source = std::move(file);
+      queue_.setMode(SubtitleQueue::Mode::Offline);
+    }
+
+    // 2. 创建并初始化 Pipeline
+    pipeline_ = std::make_unique<AsrPipeline>(this);
+    pipeline_->setSource(std::move(source));
+
+    // 连接信号（Pipeline 的 emit 发生在 std::thread 中，必须用 QueuedConnection）
+    connect(pipeline_.get(), &AsrPipeline::subtitleReady,
+            this, &AsrManager::subtitleReady, Qt::QueuedConnection);
+    connect(pipeline_.get(), &AsrPipeline::translationReady,
+            this, &AsrManager::translationReady, Qt::QueuedConnection);
+    connect(pipeline_.get(), &AsrPipeline::engineError,
+            this, &AsrManager::engineError, Qt::QueuedConnection);
+
+    // 3. 用配置初始化管线（VAD + ASR + 翻译引擎）
+    auto cfg = buildPipelineConfig();
+  if (!pipeline_->init(cfg, audio, &queue_)) {
+        qWarning() << "[AsrManager] Pipeline init failed";
+        pipeline_.reset();
+    return false;
+    }
+
+    return true;
 }
 
 void AsrManager::start() {
-    if (strategy_) strategy_->start();
+    if (pipeline_) pipeline_->start();
 }
 
 void AsrManager::stop() {
-    if (strategy_) strategy_->stop();
+    if (pipeline_) {
+        pipeline_->stop();
+        pipeline_.reset();
+    }
     queue_.clear();
 }
 
 void AsrManager::reset() {
-    if (strategy_) strategy_->reset();
+    if (pipeline_) pipeline_->reset();
 }
 
 void AsrManager::sendAudioFrame(AVFrame* frame) {
-    if (strategy_) strategy_->sendAudio(frame);
+    if (pipeline_) pipeline_->feedAudio(frame);
 }
 
-// ===== 新增接口实现 =====
+// ===== 配置接口实现 =====
 
 void AsrManager::setAsrEngineType(AsrEngineType type) {
     asr_engine_type_ = type;
@@ -100,7 +114,7 @@ void AsrManager::setPipelineConfig(const PipelineConfig& cfg) {
 }
 
 PipelineConfig AsrManager::buildPipelineConfig() const {
-    PipelineConfig cfg;
+  PipelineConfig cfg;
     cfg.enable_vad = vad_enabled_;
     cfg.vad_type = VadEngineType::FSMN;
     cfg.vad_config.model_path = vad_model_path_.toStdString();

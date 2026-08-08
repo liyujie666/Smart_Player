@@ -1085,7 +1085,9 @@ void PlayerCore::checkAndUpdateSubtitle()
     if (state_ == Stopped || state_ == Paused) return;
     double now = currentTimeSec();
     SubtitleItem sub = asr_manager_->queue()->getCurrent(now);
-    if (sub.text != current_display_sub_.text) {
+    // 原文或译文变化都需要刷新（译文异步回填时原文不变）
+    if (sub.text != current_display_sub_.text ||
+        sub.translated_text != current_display_sub_.translated_text) {
         current_display_sub_ = sub;
         // 如果有译文，拼接为 "原文\n译文"
         QString display = QString::fromStdString(sub.text);

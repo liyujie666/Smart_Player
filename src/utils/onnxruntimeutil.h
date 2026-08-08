@@ -10,6 +10,14 @@
 #if HAS_ONNXRUNTIME
 #include <onnxruntime_cxx_api.h>
 
+// 跨平台 ONNX Runtime 模型路径转换宏
+// Windows 下 Ort::Session 构造函数要求 const wchar_t*，其他平台用 const char*
+#ifdef _WIN32
+#define ORT_PATH(qstr) ((qstr).toStdWString().c_str())
+#else
+#define ORT_PATH(qstr) ((qstr).toUtf8().constData())
+#endif
+
 // ONNX Runtime 公共工具：单例 Env + 通用辅助函数
 class OrtUtil {
 public:

@@ -1,7 +1,7 @@
 #include "videosummarymanager.h"
 #include "videosummarysegmenter.h"
 #include "semanticsegmenter.h"
-#include "subtitle/asrworker.h"
+#include "subtitle/whisperengine.h"
 #include "demuxer/demuxer.h"
 #include "decoder/decoder.h"
 #include "resampler/resampler.h"
@@ -585,8 +585,8 @@ void VideoSummaryManager::runWhisperASR(const QString& audioPath) {
         return;
     }
 
-    AsrWorker worker;
-    AsrConfig cfg;
+    WhisperEngine worker;
+    AsrEngineConfig cfg;
     cfg.model_path = ConfigManager::instance().getModelPath().toStdString();
     if (cfg.model_path.empty()) {
         emit errorOccurred(QStringLiteral(u"ASR模型路径未设置"));
