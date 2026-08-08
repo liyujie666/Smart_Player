@@ -208,12 +208,39 @@ std::vector<float> FsmnVad::computeFeatures(const std::vector<float>& pcm, int& 
 
     // CMVN: (x + mean) * var
     if ((int)cmvn_mean_.size() == feat_dim && (int)cmvn_var_.size() == feat_dim) {
+        // 诊断：归一化前的特征范围
+        if (!diagnostic_logged_ && !flat.empty()) {
+            float before_min = flat[0], before_max = flat[0];
+            for (float v : flat) {
+                if (v < before_min) before_min = v;
+                if (v > before_max) before_max = v;
+            }
+            qDebug() << "[FsmnVad] Feature before CMVN: min=" << before_min << "max=" << before_max;
+            qDebug() << "[FsmnVad] CMVN params: mean[0:5]=" << cmvn_mean_[0] << cmvn_mean_[1] 
+                     << cmvn_mean_[2] << cmvn_mean_[3] << cmvn_mean_[4];
+            qDebug() << "[FsmnVad] CMVN params: var[0:5]=" << cmvn_var_[0] << cmvn_var_[1] 
+                     << cmvn_var_[2] << cmvn_var_[3] << cmvn_var_[4];
+        }
+
         for (int i = 0; i < T_lfr; ++i) {
             float* row = flat.data() + (size_t)i * feat_dim;
             for (int d = 0; d < feat_dim; ++d) {
                 row[d] = (row[d] + cmvn_mean_[d]) * cmvn_var_[d];
             }
         }
+
+        // 诊断：归一化后的特征范围
+        if (!diagnostic_logged_ && !flat.empty()) {
+            float after_min = flat[0], after_max = flat[0];
+            for (float v : flat) {
+                if (v < after_min) after_min = v;
+                if (v > after_max) after_max = v;
+            }
+            qDebug() << "[FsmnVad] Feature after CMVN: min=" << after_min << "max=" << after_max;
+        }
+    } else {
+        qWarning() << "[FsmnVad] CMVN skip: mean_dim=" << cmvn_mean_.size() 
+                   << "var_dim=" << cmvn_var_.size() << "expected=" << feat_dim;
     }
 
     out_frames = T_lfr;
@@ -275,26 +302,40 @@ std::vector<float> FsmnVad::inferFeatures(const std::vector<float>& flat_feats, 
     }
 
     // 输出0是多类声学 PDF（随附模型为 248 类），配置中的 sil_pdf_ids=[0]。
-    // 语音后验应为 1 - P(silence)，不能只对类别 0、1 做二分类 softmax。
+    // FSMN-VAD 量化模型输出已经是后验概率，不需要 softmax
     auto shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
     if (shape.size() < 3 || shape[2] < 2) return {};
 
     const int T = (int)shape[1];
     const int C = (int)shape[2];
-    const float* logits = outputs[0].GetTensorData<float>();
+    const float* probs_data = outputs[0].GetTensorData<float>();
+
+    // 诊断：打印第一帧的原始输出（前 10 个类别）
+    if (!diagnostic_logged_ && T > 0) {
+        qDebug() << "[FsmnVad] Model output: T=" << T << "C=" << C;
+        qDebug() << "[FsmnVad] First frame posterior[0:10]:" 
+                 << probs_data[0] << probs_data[1] << probs_data[2] << probs_data[3] << probs_data[4]
+                 << probs_data[5] << probs_data[6] << probs_data[7] << probs_data[8] << probs_data[9];
+        // 检查是否已经是概率（和应该接近 1）
+        float sum = 0.0f;
+        for (int c = 0; c < C; ++c) sum += probs_data[c];
+        qDebug() << "[FsmnVad] First frame prob sum=" << sum << "(should be ~1.0 if softmax already applied)";
+    }
 
     std::vector<float> probs(T);
     for (int t = 0; t < T; ++t) {
-        const float* row = logits + (size_t)t * C;
-        float max_logit = row[0];
-        for (int c = 1; c < C; ++c) max_logit = std::max(max_logit, row[c]);
-
-        double denominator = 0.0;
-        for (int c = 0; c < C; ++c) {
-            denominator += std::exp((double)row[c] - max_logit);
+        const float* row = probs_data + (size_t)t * C;
+        // 直接使用模型输出作为后验概率
+        // sil_pdf_ids=[0] 表示用 class_0 的概率判断 VAD
+        // 但根据 FunASR 的语义，class_0 概率高 = 静音，所以需要取反
+        const float silence_posterior = row[0];
+        probs[t] = std::clamp(1.0f - silence_posterior, 0.0f, 1.0f);
+        
+        // 诊断：打印第一帧的概率
+        if (!diagnostic_logged_ && t == 0) {
+            qDebug() << "[FsmnVad] Frame 0: silence_posterior=" << silence_posterior 
+                     << "speech_prob(1-sil)=" << probs[t];
         }
-        const double silence_prob = std::exp((double)row[0] - max_logit) / denominator;
-        probs[t] = std::clamp((float)(1.0 - silence_prob), 0.0f, 1.0f);
     }
     return probs;
 }

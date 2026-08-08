@@ -23,7 +23,7 @@ public:
         float dither = 0.0f;
         bool remove_dc_offset = true;
         bool use_power = true;
-        float pcm_scale = 32768.0f;
+        float pcm_scale = 32768.0f;     // 归一化输入 [-1,1] → int16 幅度范围
         float energy_floor = 1.0e-10f;
     };
 
@@ -65,7 +65,8 @@ public:
         for (int f = 0; f < num_frames; ++f) {
             int start = f * cfg_.frame_shift;
 
-            // 1. 转换到 FunASR/Kaldi 使用的 int16 幅值范围
+            // 1. FunASR/Kaldi 的 FBank 计算假设输入是 int16 量化后的浮点表示
+            // 当前重采样器输出 [-1, 1] 归一化浮点，需要放大到 int16 幅度范围以匹配 CMVN 训练条件
             for (int i = 0; i < cfg_.frame_length; ++i) {
                 frame[i] = pcm[start + i] * cfg_.pcm_scale;
             }
