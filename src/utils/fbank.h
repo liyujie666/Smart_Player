@@ -28,7 +28,7 @@ public:
 
     void init(const Config& cfg = {}) {
         cfg_ = cfg;
-        n_fft_ = cfg_.frame_length;
+        n_fft_ = 512;   // FFT 点数补零到 2 的幂次（标准做法），frame_length=400 时补 112 个零
         // 计算 Mel 滤波器组
         computeMelFilterbank();
         // 预计算汉明窗
@@ -51,7 +51,7 @@ public:
 
         std::vector<std::vector<float>> features(num_frames);
         std::vector<float> frame(cfg_.frame_length);
-        std::vector<float> power_spectrum(n_fft_ / 2 + 1);
+        std::vector<float> power_spectrum(n_fft_ / 2 + 1);  // 257 bins @ n_fft=512
 
         for (int f = 0; f < num_frames; ++f) {
             int start = f * cfg_.frame_shift;
@@ -123,26 +123,34 @@ private:
         float mel_min = hzToMel(0);
         float mel_max = hzToMel(cfg_.sample_rate / 2);
 
+        // 标准 HTK/Kaldi 方式：生成 n_filters+2 个等间距 Mel 点
+        // 第 m 个滤波器: left=points[m], center=points[m+1], right=points[m+2]
+        std::vector<float> mel_points(n_filters + 2);
+        for (int i = 0; i < n_filters + 2; ++i) {
+            mel_points[i] = mel_min + (mel_max - mel_min) * i / (n_filters + 1);
+        }
+
         mel_filters_.resize(n_filters);
 
         for (int m = 0; m < n_filters; ++m) {
-            float mel_left = mel_min + (mel_max - mel_min) * m / n_filters;
-            float mel_center = mel_min + (mel_max - mel_min) * (m + 0.5f) / n_filters;
-            float mel_right = mel_min + (mel_max - mel_min) * (m + 1) / n_filters;
+            float hz_left = melToHz(mel_points[m]);
+            float hz_center = melToHz(mel_points[m + 1]);
+            float hz_right = melToHz(mel_points[m + 2]);
 
-            float hz_left = melToHz(mel_left);
-            float hz_center = melToHz(mel_center);
-            float hz_right = melToHz(mel_right);
+            int bin_left = (int)std::round(hz_left * n_fft_ / cfg_.sample_rate);
+            int bin_center = (int)std::round(hz_center * n_fft_ / cfg_.sample_rate);
+            int bin_right = (int)std::round(hz_right * n_fft_ / cfg_.sample_rate);
 
-            int bin_left = (int)(hz_left * n_fft_ / cfg_.sample_rate);
-            int bin_center = (int)(hz_center * n_fft_ / cfg_.sample_rate);
-            int bin_right = (int)(hz_right * n_fft_ / cfg_.sample_rate);
+            // 确保至少有一个 bin 的宽度
+            if (bin_right <= bin_left) bin_right = bin_left + 1;
+            if (bin_center <= bin_left) bin_center = bin_left + 1;
+            if (bin_center >= bin_right) bin_center = bin_right - 1;
 
             for (int k = bin_left; k <= bin_right && k < n_fft_bins; ++k) {
                 float weight = 0.0f;
-                if (k < bin_center && bin_center > bin_left) {
+                if (k < bin_center) {
                     weight = (float)(k - bin_left) / (bin_center - bin_left);
-                } else if (k <= bin_right && bin_right > bin_center) {
+                } else if (k <= bin_right) {
                     weight = (float)(bin_right - k) / (bin_right - bin_center);
                 }
                 if (weight > 0) {
@@ -155,21 +163,19 @@ private:
     float hzToMel(float hz) { return 1127.0f * std::log1p(hz / 700.0f); }
     float melToHz(float mel) { return 700.0f * (std::exp(mel / 1127.0f) - 1.0f); }
 
-    // 简化 FFT（实数，只需正频率部分）
-    // 对于 400 点 FFT，使用朴素 DFT（可后续优化为 Cooley-Tukey）
+    // DFT 计算功率谱（补零到 n_fft，只需正频率部分）
     void computePowerSpectrum(const std::vector<float>& frame, std::vector<float>& power) {
         int n = n_fft_;
         int half = n / 2 + 1;
-
-        // 补零到 n_fft（如果 frame_length < n_fft）
-        std::vector<std::complex<float>> spectrum(half);
+        int frame_len = (int)frame.size();
 
         for (int k = 0; k < half; ++k) {
             std::complex<float> sum(0, 0);
-            for (int i = 0; i < n; ++i) {
-                float real_part = frame[i] * std::cos(-2.0f * (float)M_PI * k * i / n);
-                float imag_part = frame[i] * std::sin(-2.0f * (float)M_PI * k * i / n);
-                sum += std::complex<float>(real_part, imag_part);
+            // 只遍历 frame 的实际长度（补零部分贡献为 0，跳过）
+            for (int i = 0; i < frame_len; ++i) {
+                float angle = -2.0f * (float)M_PI * k * i / n;
+                sum += std::complex<float>(frame[i] * std::cos(angle),
+                                           frame[i] * std::sin(angle));
             }
             power[k] = std::norm(sum) / n;
             if (k > 0 && k < half - 1) power[k] *= 2;

@@ -334,13 +334,23 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double b
                 total_frames_processed_++;
             }
             infer_count++;
-            // 首次推理打印诊断信息
+            // 首次推理打印诊断信息（含特征统计，帮助验证 FBank 正确性）
             if (infer_count == 1) {
                 float max_p = *std::max_element(probs.begin(), probs.end());
+                // 特征统计：前 5 个值、均值、方差
+                float feat_min = feats[0], feat_max = feats[0], feat_sum = 0;
+                for (float v : feats) {
+                    if (v < feat_min) feat_min = v;
+                    if (v > feat_max) feat_max = v;
+                    feat_sum += v;
+                }
+                float feat_mean = feat_sum / feats.size();
                 qDebug() << "[FsmnVad] first infer: frames=" << probs.size()
                          << "max_prob=" << max_p
-                         << "threshold=" << cfg_.threshold
-                         << "state=" << (int)state_;
+                         << "feat: min=" << feat_min << "max=" << feat_max
+                         << "mean=" << feat_mean
+                         << "first5=" << feats[0] << feats[1] << feats[2]
+                         << feats[3] << feats[4];
             }
         }
         pos += samples_per_infer;
