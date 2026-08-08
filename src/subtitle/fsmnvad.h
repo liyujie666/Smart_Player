@@ -12,8 +12,8 @@
 
 // FSMN-VAD 实现
 // 使用 FunASR 的 FSMN-VAD ONNX 模型进行语音活动检测
-// 模型输入: speech (1, T) + cache
-// 模型输出: logits (1, T_frames, 2) + cache_out
+// 模型输入: speech (1, T, 400) =80维FBank经LFR(m=5,n=1)拼接+CMVN, in_cache0~3
+// 模型输出: logits (1, T, 2) + out_cache0~3
 class FsmnVad : public IVadEngine {
 public:
     FsmnVad();
@@ -31,8 +31,12 @@ public:
     std::string name() const override { return "FSMN-VAD"; }
 
 private:
-    float inferChunk(const std::vector<float>& chunk);
+    // 对一批特征帧做推理，返回每帧的 speech 概率；失败返回空
+    std::vector<float> inferFeatures(const std::vector<float>& flat_feats, int num_frames);
     void updateState(float speech_prob, double frame_time);
+
+    // PCM → FBank(80) → LFR(m=5,n=1)→400维 → CMVN
+    std::vector<float> computeFeatures(const std::vector<float>& pcm, int& out_frames);
 
     // 加载模型目录（model.onnx + am.mvn + config.yaml）
     bool loadModel(const std::string& model_dir);
@@ -52,16 +56,14 @@ private:
 
         Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
 
-        // 模型输入输出信息
-        int64_t cache_dim = 0;        // 缓存维度
-        int64_t chunk_size = 0;       // 模型期望的输入块大小
-        int64_t cache_shape_0 = 0;    // cache shape[0]
+        int feat_dim = 400;                                // speech 输入最后一维
+        std::vector<std::vector<int64_t>> cache_shapes;    // 各 cache 输入的 shape
     };
     std::unique_ptr<OrtContext> ort_ctx_;
-    std::vector<float> cache_;       // FSMN 隐藏状态缓存
+    std::vector<std::vector<float>> caches_;   // FSMN 各隐藏状态缓存
 #endif
 
-    // CMVN 参数
+    // CMVN 参数（400 维，与 LFR 后特征维度一致）
     std::vector<float> cmvn_mean_;
     std::vector<float> cmvn_var_;
 
@@ -73,15 +75,19 @@ private:
     double current_speech_end_ = 0.0;
     int silence_frame_count_ = 0;
 
-    // 帧参数（FSMN-VAD 通常用 10ms 粒度的输出）
-    int chunk_samples_ = 2560;    // 160ms @ 16kHz (模型期望的输入块)
-    int frame_shift_ms_ = 10;    // 输出帧间隔
+    // FBank / LFR 参数
+    int n_mels_ = 80;
+    int lfr_m_ = 5;               // LFR 拼接帧数
+    int lfr_n_ = 1;               // LFR 下采样率
+    int frame_shift_ms_ = 10;     // 输出帧间隔（LFR n=1 时等于 fbank 步进）
+    int infer_chunk_frames_ = 64; // 每次推理的特征帧数
 
     std::vector<VadSegment> completed_segments_;
 
-    // 流式输入残余
+    // 流式输入残余（PCM 与已提取但未消费的特征）
     std::vector<float> residual_pcm_;
-    double residual_base_sec_ = 0.0;
+    double stream_base_sec_ = 0.0;
+    bool base_initialized_ = false;
     int64_t total_frames_processed_ = 0;
 };
 

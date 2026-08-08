@@ -21,6 +21,11 @@ PlayerCore::PlayerCore(QObject *parent)
     //subtitle_queue_ = new SubtitleQueue();
     sync_clock_ = new AVSyncClock();
     asr_manager_ = std::make_unique<AsrManager>();
+
+    // 离线识别节流：让 ASR 感知播放位置，避免全速识别占满 CPU 导致播放卡顿
+    asr_manager_->setPlaybackPositionProvider([this]() {
+        return currentTimeSec();
+    });
 }
 
 PlayerCore::~PlayerCore()

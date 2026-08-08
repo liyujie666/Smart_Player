@@ -1,6 +1,7 @@
 #include "fsmnvad.h"
 #if HAS_ONNXRUNTIME
 #include "utils/onnxruntimeutil.h"
+#include "utils/fbank.h"
 #endif
 #include <QDebug>
 #include <cmath>
@@ -30,10 +31,15 @@ bool FsmnVad::loadModel(const std::string& model_dir) {
 
     // 创建 ONNX Runtime session
     ort_ctx_ = std::make_unique<OrtContext>();
-    Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(2);
-    ort_ctx_->session = std::make_unique<Ort::Session>(
-        OrtUtil::instance().env(), ORT_PATH(model_path), opts);
-    // memory_info 已在 OrtContext 构造时创建
+    Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(1);
+    try {
+        ort_ctx_->session = std::make_unique<Ort::Session>(
+            OrtUtil::instance().env(), ORT_PATH(model_path), opts);
+    } catch (const std::exception& e) {
+        qWarning() << "[FsmnVad] failed to create session:" << e.what();
+        ort_ctx_.reset();
+        return false;
+    }
 
     // 读取输入输出名称
     size_t n_inputs = ort_ctx_->session->GetInputCount();
@@ -51,37 +57,67 @@ bool FsmnVad::loadModel(const std::string& model_dir) {
         ort_ctx_->output_names.push_back(ort_ctx_->output_name_ptrs.back().get());
     }
 
-    // 读取输入 shape，推断 chunk_size 和 cache_dim
-    auto input_shapes = ort_ctx_->session->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
-    if (input_shapes.size() >= 2) {
-        ort_ctx_->chunk_size = (input_shapes[1] > 0) ? input_shapes[1] : 2560;
-    } else {
-        ort_ctx_->chunk_size = 2560; // 默认 160ms
+    if (n_inputs == 0 || n_outputs == 0) {
+        qWarning() << "[FsmnVad] invalid model io: inputs=" << n_inputs << "outputs=" << n_outputs;
+        ort_ctx_.reset();
+        return false;
     }
 
-    // 如果有第二个输入（cache），读取其维度
-    if (n_inputs >= 2) {
-        auto cache_shapes = ort_ctx_->session->GetInputTypeInfo(1).GetTensorTypeAndShapeInfo().GetShape();
-        if (cache_shapes.size() >= 2) {
-            ort_ctx_->cache_dim = (cache_shapes[1] > 0) ? cache_shapes[1] : 128;
-            ort_ctx_->cache_shape_0 = (cache_shapes[0] > 0) ? cache_shapes[0] : 1;
+    // 输入0 = speech (1, T, feat_dim)，读取特征维度
+    auto sp_shape = ort_ctx_->session->GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+    if (!sp_shape.empty() && sp_shape.back() > 0) {
+        ort_ctx_->feat_dim = (int)sp_shape.back();
+    } else {
+        ort_ctx_->feat_dim = n_mels_ * lfr_m_;   // 80 * 5 = 400
+    }
+
+    // 输入1..N-1 = 各 cache，按模型声明的 shape 零初始化
+    caches_.clear();
+    ort_ctx_->cache_shapes.clear();
+    for (size_t i = 1; i < n_inputs; ++i) {
+        auto shape = ort_ctx_->session->GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+        size_t count = 1;
+        for (auto& d : shape) {
+            if (d <= 0) d = 1;   // 动态维度按 1 处理
+            count *= (size_t)d;
+        }
+        ort_ctx_->cache_shapes.push_back(shape);
+        caches_.emplace_back(count, 0.0f);
+    }
+
+    // 校验特征维度与 FBank+LFR 配置匹配性
+    if (ort_ctx_->feat_dim != n_mels_ * lfr_m_) {
+        if (ort_ctx_->feat_dim % n_mels_ == 0) {
+            lfr_m_ = ort_ctx_->feat_dim / n_mels_;   // 自适应 LFR 拼接帧数
+        } else {
+            qWarning() << "[FsmnVad] unsupported feat_dim=" << ort_ctx_->feat_dim
+                       << "(n_mels=" << n_mels_ << "), VAD disabled";
+            ort_ctx_.reset();
+            return false;
         }
     }
 
-    chunk_samples_ = (int)ort_ctx_->chunk_size;
-    cache_.resize(ort_ctx_->cache_dim * ort_ctx_->cache_shape_0, 0.0f);
+    QStringList in_names, out_names;
+    for (auto& n : ort_ctx_->input_names) in_names << n;
+    for (auto& n : ort_ctx_->output_names) out_names << n;
+    qDebug() << "[FsmnVad] Model loaded: feat_dim=" << ort_ctx_->feat_dim
+             << "lfr_m=" << lfr_m_
+             << "caches=" << caches_.size()
+             << "inputs:" << in_names
+             << "outputs:" << out_names;
 
-    qDebug() << "[FsmnVad] Model loaded:"
-             << "chunk_size=" << chunk_samples_
-             << "cache_dim=" << ort_ctx_->cache_dim
-             << "n_inputs=" << n_inputs
-             << "n_outputs=" << n_outputs;
-
-    // 加载 CMVN
+    // 加载 CMVN（维度须与 feat_dim 一致才生效）
     if (QFileInfo::exists(mvn_path)) {
         auto cmvn = OrtUtil::loadCmvn(mvn_path.toStdString());
-        cmvn_mean_ = std::move(cmvn.mean);
-        cmvn_var_ = std::move(cmvn.variance);
+        if ((int)cmvn.mean.size() == ort_ctx_->feat_dim &&
+            (int)cmvn.variance.size() == ort_ctx_->feat_dim) {
+            cmvn_mean_ = std::move(cmvn.mean);
+            cmvn_var_ = std::move(cmvn.variance);
+        } else {
+            qWarning() << "[FsmnVad] CMVN dim mismatch: mean=" << cmvn.mean.size()
+                       << "var=" << cmvn.variance.size()
+                       << "expected=" << ort_ctx_->feat_dim << ", skip CMVN";
+        }
     }
 
     return true;
@@ -99,16 +135,17 @@ bool FsmnVad::init(const VadConfig& cfg) {
     silence_frame_count_ = 0;
     total_frames_processed_ = 0;
     residual_pcm_.clear();
-    std::fill(cache_.begin(), cache_.end(), 0.0f);
+    base_initialized_ = false;
+    for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 
     ready_ = true;
-    qDebug() << "[FsmnVad] initialized, chunk_samples=" << chunk_samples_;
+    qDebug() << "[FsmnVad] initialized, frame_shift_ms=" << frame_shift_ms_;
     return ready_;
 }
 
 void FsmnVad::release() {
     ort_ctx_.reset();
-    cache_.clear();
+    caches_.clear();
     cmvn_mean_.clear();
     cmvn_var_.clear();
     ready_ = false;
@@ -120,115 +157,176 @@ void FsmnVad::reset() {
     total_frames_processed_ = 0;
     residual_pcm_.clear();
     completed_segments_.clear();
-    std::fill(cache_.begin(), cache_.end(), 0.0f);
+    base_initialized_ = false;
+    for (auto& c : caches_) std::fill(c.begin(), c.end(), 0.0f);
 }
 
-float FsmnVad::inferChunk(const std::vector<float>& chunk) {
-    if (!ort_ctx_ || chunk.empty()) return 0.0f;
+std::vector<float> FsmnVad::computeFeatures(const std::vector<float>& pcm, int& out_frames) {
+    out_frames = 0;
 
-    int64_t chunk_len = (int64_t)chunk.size();
+    FbankExtractor fbank;
+    FbankExtractor::Config fcfg;
+    fcfg.n_mels = n_mels_;
+    fbank.init(fcfg);
 
-    // 输入: speech (1, chunk_len)
-    std::vector<int64_t> speech_shape = {1, chunk_len};
-    Ort::Value speech_tensor = Ort::Value::CreateTensor<float>(
-        ort_ctx_->memory_info, const_cast<float*>(chunk.data()), chunk_len, speech_shape.data(), speech_shape.size());
+    auto feats = fbank.extract(pcm);
+    if (feats.empty()) return {};
 
-    // 输入: cache (1, cache_dim) 或 (1, cache_dim, 1)
-    std::vector<int64_t> cache_shape;
-    if (ort_ctx_->cache_shape_0 > 0) {
-        cache_shape = {ort_ctx_->cache_shape_0, ort_ctx_->cache_dim, 1};
-    } else {
-        cache_shape = {1, ort_ctx_->cache_dim};
+    const int T = (int)feats.size();
+    const int pad = (lfr_m_ - 1) / 2;          // LFR 左侧上下文帧数
+    const int feat_dim = n_mels_ * lfr_m_;
+    const int T_lfr = (lfr_n_ > 0) ? ((T + lfr_n_ - 1) / lfr_n_) : T;
+
+    // LFR(m, n): 左侧复制首帧 padding，按步进 n 取 m 帧窗口拼接
+    std::vector<float> flat((size_t)T_lfr * feat_dim, 0.0f);
+    for (int i = 0; i < T_lfr; ++i) {
+        const int center = i * lfr_n_;
+        for (int k = 0; k < lfr_m_; ++k) {
+            int src = center - pad + k;
+            if (src < 0) src = 0;
+            if (src >= T) src = T - 1;
+            const auto& f = feats[src];
+            std::copy(f.begin(), f.begin() + n_mels_,
+                      flat.begin() + (size_t)i * feat_dim + (size_t)k * n_mels_);
+        }
     }
-    Ort::Value cache_tensor = Ort::Value::CreateTensor<float>(
-        ort_ctx_->memory_info, cache_.data(), cache_.size(), cache_shape.data(), cache_shape.size());
 
-    // 组装输入
+    // CMVN: (x + mean) * var
+    if ((int)cmvn_mean_.size() == feat_dim && (int)cmvn_var_.size() == feat_dim) {
+        for (int i = 0; i < T_lfr; ++i) {
+            float* row = flat.data() + (size_t)i * feat_dim;
+            for (int d = 0; d < feat_dim; ++d) {
+                row[d] = (row[d] + cmvn_mean_[d]) * cmvn_var_[d];
+            }
+        }
+    }
+
+    out_frames = T_lfr;
+    return flat;
+}
+
+std::vector<float> FsmnVad::inferFeatures(const std::vector<float>& flat_feats, int num_frames) {
+    if (!ort_ctx_ || !ort_ctx_->session || num_frames <= 0) return {};
+
+    const int feat_dim = ort_ctx_->feat_dim;
+    if ((int)flat_feats.size() != (size_t)num_frames * feat_dim) return {};
+
+    // 输入0: speech (1, T, feat_dim)
+    std::vector<int64_t> sp_shape = {1, num_frames, feat_dim};
     std::vector<Ort::Value> inputs;
-    inputs.push_back(std::move(speech_tensor));
-    if (ort_ctx_->input_names.size() >= 2) {
-        inputs.push_back(std::move(cache_tensor));
+    inputs.push_back(Ort::Value::CreateTensor<float>(
+        ort_ctx_->memory_info, const_cast<float*>(flat_feats.data()), flat_feats.size(),
+        sp_shape.data(), sp_shape.size()));
+
+    // 输入1..N-1: 各 cache
+    for (size_t i = 0; i < caches_.size(); ++i) {
+        auto& shape = ort_ctx_->cache_shapes[i];
+        inputs.push_back(Ort::Value::CreateTensor<float>(
+            ort_ctx_->memory_info, caches_[i].data(), caches_[i].size(),
+            shape.data(), shape.size()));
     }
 
-    // 推理
-    auto outputs = ort_ctx_->session->Run(
-        Ort::RunOptions{nullptr},
-        ort_ctx_->input_names.data(),
-        inputs.data(),
-        inputs.size(),
-        ort_ctx_->output_names.data(),
-        ort_ctx_->output_names.size());
-
-    // 输出[0]: logits (1, num_frames, 2)
-    // 输出[1]: cache (更新后的缓存)
-    if (outputs.empty()) return 0.0f;
-
-    // 更新 cache
-    if (outputs.size() >= 2) {
-        auto& cache_out = outputs[1];
-        float* cache_data = cache_out.GetTensorMutableData<float>();
-        size_t cache_count = cache_out.GetTensorTypeAndShapeInfo().GetElementCount();
-        std::copy(cache_data, cache_data + cache_count, cache_.begin());
+    // 推理（try-catch 防止 ONNX 异常导致 abort）
+    std::vector<Ort::Value> outputs;
+    try {
+        outputs = ort_ctx_->session->Run(
+            Ort::RunOptions{nullptr},
+            ort_ctx_->input_names.data(),
+            inputs.data(),
+            inputs.size(),
+            ort_ctx_->output_names.data(),
+            ort_ctx_->output_names.size());
+    } catch (const Ort::Exception& e) {
+        qWarning() << "[FsmnVad] ONNX Run failed:" << e.what();
+        return {};
+    } catch (const std::exception& e) {
+        qWarning() << "[FsmnVad] inference failed:" << e.what();
+        return {};
     }
 
-    // 取最后一帧的 speech prob
-    auto& logits = outputs[0];
-    auto shape = logits.GetTensorTypeAndShapeInfo().GetShape();
-    if (shape.size() < 3) return 0.0f;
+    if (outputs.empty()) return {};
 
-    int64_t num_frames = shape[1];
-    if (num_frames == 0) return 0.0f;
+    // 输出1.. = 更新后的 cache，回写
+    for (size_t i = 0; i + 1 < outputs.size() && i < caches_.size(); ++i) {
+        try {
+            const float* data = outputs[i + 1].GetTensorData<float>();
+            size_t count = outputs[i + 1].GetTensorTypeAndShapeInfo().GetElementCount();
+            if (count == caches_[i].size()) {
+                std::copy(data, data + count, caches_[i].begin());
+            }
+        } catch (const std::exception&) {
+            // cache 输出类型异常时保留旧 cache
+        }
+    }
 
-    float* logits_data = logits.GetTensorMutableData<float>();
-    // logits shape: (1, num_frames, 2)
-    // 最后一帧: [num_frames-1, 0] = non-speech, [num_frames-1, 1] = speech
-    float non_speech = logits_data[(num_frames - 1) * 2 + 0];
-    float speech = logits_data[(num_frames - 1) * 2 + 1];
+    // 输出0: logits (1, T, 2)，逐帧 softmax 得 speech 概率
+    auto shape = outputs[0].GetTensorTypeAndShapeInfo().GetShape();
+    if (shape.size() < 3 || shape[2] < 2) return {};
 
-    // softmax → 概率
-    float max_val = std::max(non_speech, speech);
-    float exp_ns = std::exp(non_speech - max_val);
-    float exp_s = std::exp(speech - max_val);
-    float prob = exp_s / (exp_ns + exp_s);
+    const int T = (int)shape[1];
+    const int C = (int)shape[2];
+    const float* logits = outputs[0].GetTensorData<float>();
 
-    return prob;
+    std::vector<float> probs(T);
+    for (int t = 0; t < T; ++t) {
+        float non_speech = logits[(size_t)t * C + 0];
+        float speech = logits[(size_t)t * C + 1];
+        float m = std::max(non_speech, speech);
+        float e_ns = std::exp(non_speech - m);
+        float e_s = std::exp(speech - m);
+        probs[t] = e_s / (e_ns + e_s);
+    }
+    return probs;
 }
 
 std::vector<VadSegment> FsmnVad::process(const std::vector<float>& pcm, double base_sec) {
     completed_segments_.clear();
+    if (!ready_ || !ort_ctx_) return {};
 
-    // 拼接残余数据
-    std::vector<float> audio;
-    if (!residual_pcm_.empty()) {
-        audio = std::move(residual_pcm_);
-        audio.insert(audio.end(), pcm.begin(), pcm.end());
-    } else {
-        audio = pcm;
-        residual_base_sec_ = base_sec;
+    // 首次调用记录流起点，用于换算帧时间
+    if (!base_initialized_) {
+        stream_base_sec_ = base_sec;
+        base_initialized_ = true;
     }
 
-    // 按 chunk_size 逐块处理
+    // 拼接上次残余的 PCM
+    std::vector<float> audio = std::move(residual_pcm_);
+    residual_pcm_.clear();
+    audio.insert(audio.end(), pcm.begin(), pcm.end());
+
+    const int frame_shift = 160;    // 10ms @ 16k
+    const int frame_length = 400;   // 25ms @ 16k
+    const int overlap = frame_length - frame_shift;
+    const size_t samples_per_infer = (size_t)infer_chunk_frames_ * frame_shift;
+
     size_t pos = 0;
-    while (pos + chunk_samples_ <= audio.size()) {
-        std::vector<float> chunk(audio.begin() + pos, audio.begin() + pos + chunk_samples_);
+    while (pos + samples_per_infer + overlap <= audio.size()) {
+        std::vector<float> seg(audio.begin() + pos,
+                               audio.begin() + pos + samples_per_infer + overlap);
 
-        float speech_prob = inferChunk(chunk);
-
-        // 每个 chunk 输出 1 帧（10ms 粒度）
-        double frame_time = residual_base_sec_ +
-            (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
-
-        updateState(speech_prob, frame_time);
-
-        total_frames_processed_++;
-        pos += chunk_samples_;
+        int nf = 0;
+        auto feats = computeFeatures(seg, nf);
+        if (nf > 0) {
+            auto probs = inferFeatures(feats, nf);
+            if (probs.empty()) {
+                // 推理不可用：禁用 VAD，让上层降级到 no-VAD 模式
+                qWarning() << "[FsmnVad] inference unavailable, disabling VAD";
+                ready_ = false;
+                return {};
+            }
+            for (float p : probs) {
+                double frame_time = stream_base_sec_ +
+                    (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
+                updateState(p, frame_time);
+                total_frames_processed_++;
+            }
+        }
+        pos += samples_per_infer;
     }
 
-    // 保存残余
+    // 保存残余（保留窗口重叠部分供下次拼接）
     if (pos < audio.size()) {
         residual_pcm_.assign(audio.begin() + pos, audio.end());
-    } else {
-        residual_pcm_.clear();
     }
 
     return std::move(completed_segments_);
@@ -238,7 +336,7 @@ std::vector<VadSegment> FsmnVad::flush() {
     completed_segments_.clear();
 
     if (state_ == State::Speech || state_ == State::Trailing) {
-        double end_time = residual_base_sec_ +
+        double end_time = stream_base_sec_ +
             (double)(total_frames_processed_ * frame_shift_ms_) / 1000.0;
         double duration_ms = (end_time - current_speech_start_) * 1000.0;
 
@@ -318,6 +416,15 @@ std::vector<VadSegment> FsmnVad::process(const std::vector<float>&, double) {
 }
 
 std::vector<VadSegment> FsmnVad::flush() {
+    return {};
+}
+
+std::vector<float> FsmnVad::computeFeatures(const std::vector<float>&, int& out_frames) {
+    out_frames = 0;
+    return {};
+}
+
+std::vector<float> FsmnVad::inferFeatures(const std::vector<float>&, int) {
     return {};
 }
 

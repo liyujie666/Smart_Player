@@ -368,22 +368,32 @@ void AsrPipeline::offlineLoop() {
     std::vector<float> pcm(CHUNK_SAMPLES);
 
     while (running_ && !source_->isEof() && !source_->isCancelled()) {
-    double media_time = 0.0;
+        double media_time = 0.0;
         int n = source_->pull(pcm.data(), CHUNK_SAMPLES, media_time);
 
         if (n <= 0) break;  // EOF 或错误
 
-     // 调整实际大小
+        // 节流：识别进度超前播放位置过多时暂缓，避免占满 CPU 导致播放卡顿
+        if (playback_pos_fn_) {
+            while (running_ && !source_->isCancelled()) {
+                double pos = playback_pos_fn_();
+                if (media_time - pos <= lookahead_sec_) break;
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            if (!running_ || source_->isCancelled()) break;
+        }
+
+        // 调整实际大小
         std::vector<float> chunk(pcm.begin(), pcm.begin() + n);
 
         // 复用已有的 VAD→ASR→翻译 逻辑
         if (config_.enable_vad && vad_ && vad_->isReady()) {
             auto segments = vad_->process(chunk, media_time);
             if (!segments.empty()) {
-        processVadSegments(segments, chunk, media_time);
-     }
+                processVadSegments(segments, chunk, media_time);
+            }
         } else {
-          processDirectAsr(chunk, media_time);
+            processDirectAsr(chunk, media_time);
         }
     }
 

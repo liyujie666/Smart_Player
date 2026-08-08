@@ -34,9 +34,16 @@ bool SenseVoiceEngine::loadModel(const std::string& model_dir) {
     }
 
     impl_ = std::make_unique<Impl>();
-    Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(4);
-    impl_->session = std::make_unique<Ort::Session>(
-        OrtUtil::instance().env(), ORT_PATH(model_path), opts);
+    // 线程数控制在 2：避免抢占视频解码/渲染线程导致播放卡顿
+    Ort::SessionOptions opts = OrtUtil::defaultSessionOptions(2);
+    try {
+        impl_->session = std::make_unique<Ort::Session>(
+            OrtUtil::instance().env(), ORT_PATH(model_path), opts);
+    } catch (const std::exception& e) {
+        qWarning() << "[SenseVoice] failed to create session:" << e.what();
+        impl_.reset();
+        return false;
+    }
     // memory_info 已在 Impl 构造时创建
 
     // 读取输入输出名称

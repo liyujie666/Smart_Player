@@ -9,6 +9,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <optional>
+#include <functional>
 
 #include "ivadengine.h"
 #include "iasrengine.h"
@@ -68,6 +69,13 @@ public:
     void enableTranslation(bool enable);
     void enableVad(bool enable);
 
+    // 离线识别节流：提供当前播放位置（秒），识别进度超前 lookahead 后暂缓，
+    // 避免一开启字幕就全速识别整个文件占满 CPU 导致播放卡顿
+    void setPlaybackPositionProvider(std::function<double()> fn) {
+        playback_pos_fn_ = std::move(fn);
+    }
+    void setLookaheadSec(double sec) { lookahead_sec_ = sec; }
+
     // 获取当前引擎信息
     std::string currentAsrEngineName() const;
     std::string currentTranslatorName() const;
@@ -122,6 +130,10 @@ private:
 
     // 实时模式去重
     std::string last_text_;
+
+    // 离线识别节流
+    std::function<double()> playback_pos_fn_;
+    double lookahead_sec_ = 20.0;   // 允许超前播放位置的秒数
 
     // Whisper缓存模型管理标记
     bool uses_cached_model_ = false;

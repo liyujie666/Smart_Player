@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <memory>
+#include <functional>
 #include "queue/subtitlequeue.h"
 #include "iasrengine.h"
 #include "itranslator.h"
@@ -26,6 +27,11 @@ public:
 
     void setModelPath(const QString& path);
     bool isModelPathEmpty() const { return model_path_.isEmpty(); }
+
+    // 离线识别节流：提供当前播放位置（秒），避免识别过度超前占满 CPU
+    void setPlaybackPositionProvider(std::function<double()> fn) {
+        playback_pos_fn_ = std::move(fn);
+    }
 
     // 预加载模型
     void warmUp();
@@ -74,6 +80,9 @@ private:
     TranslatorType translator_type_ = TranslatorType::GPT;
     TranslateConfig translate_config_;
     bool translation_enabled_ = false;
+
+    // 离线识别节流：播放位置提供者
+    std::function<double()> playback_pos_fn_;
 };
 
 #endif

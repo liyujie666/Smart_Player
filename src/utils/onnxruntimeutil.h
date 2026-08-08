@@ -6,6 +6,8 @@
 #include <QDebug>
 #include <QFile>
 #include <QTextStream>
+#include <QStringList>
+#include <QRegularExpression>
 
 #if HAS_ONNXRUNTIME
 #include <onnxruntime_cxx_api.h>
@@ -61,7 +63,9 @@ public:
     }
 
     // 读取 am.mvn 文件（CMVN 归一化参数）
-    // 格式: 第一行 mean，第二行 variance
+    // 支持两种格式：
+    //  1. Kaldi nnet 文本格式：<AddShift> ... [ mean... ]  <Rescale> ... [ var... ]
+    //  2. 简单格式：第一行 mean，第二行 variance
     struct CmvnParams {
         std::vector<float> mean;
         std::vector<float> variance;
@@ -75,19 +79,42 @@ public:
             return params;
         }
 
-        QTextStream in(&file);
-        int line_idx = 0;
-        while (!in.atEnd()) {
-            QString line = in.readLine().trimmed();
-            if (line.isEmpty()) continue;
-            QStringList parts = line.split(' ', Qt::SkipEmptyParts);
+        QString content = QTextStream(&file).readAll();
 
-            std::vector<float>* target = nullptr;
-            if (line_idx == 0) target = &params.mean;
-            else if (line_idx == 1) target = &params.variance;
-            line_idx++;
+        if (content.contains("<AddShift>") || content.contains("<Rescale>")) {
+            // Kaldi 格式：按标记定位随后的 [ ... ] 数值块
+            QString spaced = content;
+            spaced.replace('[', " [ ").replace(']', " ] ");
+            const QStringList tokens = spaced.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
 
-            if (target) {
+            std::vector<float>* target = nullptr;   // 当前标记指向的目标
+            std::vector<float>* collecting = nullptr;
+
+            for (const QString& tok : tokens) {
+                if (tok == "<AddShift>") {
+                    target = &params.mean;
+                } else if (tok == "<Rescale>") {
+                    target = &params.variance;
+                } else if (tok == "<Splice>" || tok == "<Nnet>" || tok == "</Nnet>") {
+                    target = nullptr;               // 这些标记后的 [ ] 不是CMVN 数据
+                } else if (tok == "[") {
+                    collecting = target;
+                    if (collecting) collecting->clear();
+                } else if (tok == "]") {
+                    collecting = nullptr;
+                    target = nullptr;
+                } else if (collecting) {
+                    bool ok = false;
+                    float v = tok.toFloat(&ok);
+                    if (ok) collecting->push_back(v);
+                }
+            }
+        } else {
+            // 简单格式：第一行 mean，第二行 variance
+            const QStringList lines = content.split('\n', Qt::SkipEmptyParts);
+            for (int i = 0; i < lines.size() && i < 2; ++i) {
+                std::vector<float>* target = (i == 0) ? &params.mean : &params.variance;
+                const QStringList parts = lines[i].trimmed().split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
                 for (const QString& p : parts) {
                     bool ok = false;
                     float v = p.toFloat(&ok);
@@ -95,6 +122,7 @@ public:
                 }
             }
         }
+
         qDebug() << "[OrtUtil] CMVN loaded: mean_dim=" << params.mean.size()
                  << "var_dim=" << params.variance.size();
         return params;

@@ -54,6 +54,11 @@ bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* aud
     pipeline_ = std::make_unique<AsrPipeline>(this);
     pipeline_->setSource(std::move(source));
 
+    // 离线识别节流：把播放位置提供者传给 Pipeline
+    if (playback_pos_fn_) {
+        pipeline_->setPlaybackPositionProvider(playback_pos_fn_);
+    }
+
     // 连接信号（Pipeline 的 emit 发生在 std::thread 中，必须用 QueuedConnection）
     connect(pipeline_.get(), &AsrPipeline::subtitleReady,
             this, &AsrManager::subtitleReady, Qt::QueuedConnection);
