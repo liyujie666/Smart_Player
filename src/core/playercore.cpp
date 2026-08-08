@@ -449,6 +449,12 @@ void PlayerCore::applyAsrConfig(bool overrideTransEnabled, bool transEnabled)
     asr_manager_->setVadModelPath(cfg.getVadModelPath());
     asr_manager_->setTranslatorType(static_cast<TranslatorType>(cfg.getTranslatorType()));
 
+    // 同步模型路径（确保引擎类型已设置后再设路径，避免错误触发 Whisper 缓存）
+    QString modelPath = cfg.getModelPath();
+    if (!modelPath.isEmpty()) {
+        asr_manager_->setModelPath(modelPath);
+    }
+
     bool enabled = overrideTransEnabled ? transEnabled : cfg.getTranslationEnabled();
     asr_manager_->setTranslationEnabled(enabled);
 
@@ -473,6 +479,9 @@ void PlayerCore::setAsrEnabled(bool enabled)
     if(state_ == State::Stopped) return;
 
     if (enabled) {
+        // 先加载引擎配置（确保 engineType 正确再触发模型缓存）
+        applyAsrConfig();
+
         // 加载 ASR 模型路径
         if(asr_manager_->isModelPathEmpty()) {
             QString savedPath = ConfigManager::instance().getModelPath();
@@ -483,9 +492,6 @@ void PlayerCore::setAsrEnabled(bool enabled)
                 return;
             }
         }
-
-        // 从配置加载引擎/VAD/翻译设置
-        applyAsrConfig();
 
         AVStream* as = demuxer_->getStream(AVMEDIA_TYPE_AUDIO);
         if(asr_manager_->init(file_url_, demuxer_->mediaType(), as)){

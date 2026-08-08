@@ -10,12 +10,18 @@ AsrManager::~AsrManager() { stop(); }
 void AsrManager::setModelPath(const QString& path) {
     if (model_path_ == path) return;
     model_path_ = path;
-    AsrModelCache::instance().setModelPath(path);
+    // AsrModelCache 仅服务于 Whisper 引擎
+    if (asr_engine_type_ == AsrEngineType::Whisper) {
+        AsrModelCache::instance().setModelPath(path);
+    }
 }
 
 void AsrManager::warmUp() {
     if (model_path_.isEmpty()) return;
-    AsrModelCache::instance().setModelPath(model_path_);
+    // AsrModelCache 仅服务于 Whisper 引擎
+    if (asr_engine_type_ == AsrEngineType::Whisper) {
+        AsrModelCache::instance().setModelPath(model_path_);
+    }
 }
 
 bool AsrManager::init(const QString& url, Demuxer::MediaType type, AVStream* audio) {

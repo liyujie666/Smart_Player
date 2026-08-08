@@ -356,13 +356,14 @@ std::lock_guard<std::mutex> lock(translate_mtx_);
 
 void AsrPipeline::offlineLoop() {
     if (!source_) {
-    qWarning() << "[AsrPipeline] offlineLoop: no source bound";
+        qWarning() << "[AsrPipeline] offlineLoop: no source bound";
         running_ = false;
         return;
     }
 
     const int SR = 16000;
-    const int CHUNK_SEC = 30;
+    // Whisper 设计处理 30s chunk；SenseVoice 等ONNX 引擎建议 ≤10s
+    const int CHUNK_SEC = (config_.asr_type == AsrEngineType::Whisper) ? 30 : 10;
     const int CHUNK_SAMPLES = CHUNK_SEC * SR;
     std::vector<float> pcm(CHUNK_SAMPLES);
 
