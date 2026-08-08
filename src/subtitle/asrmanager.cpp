@@ -211,9 +211,16 @@ void AsrManager::stop() {
     init_cancelling_ = false;
 
     std::lock_guard<std::mutex> lock(init_mtx_);
+    // 异步执行 pipeline 停止操作，避免阻塞主线程
     if (pipeline_) {
-        pipeline_->stop();
-        pipeline_.reset();   // 只释放 Pipeline（音频源/线程），引擎缓存保留
+        std::thread([pipeline = std::move(pipeline_)]() mutable {
+            // 在后台线程中执行 stop 和析构，不阻塞主线程
+            // lambda 捕获并拥有 pipeline 的所有权，线程安全
+            if (pipeline) {
+                pipeline->stop();
+                pipeline.reset();
+            }
+        }).detach();
     }
     queue_.clear();
 }
